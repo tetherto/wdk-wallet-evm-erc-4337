@@ -1,5 +1,6 @@
 export { default } from "./src/wallet-manager-evm-erc-4337.js";
 export { default as WalletAccountEvmErc4337 } from "./src/wallet-account-evm-erc-4337.js";
+export { default as WalletAccountReadOnlyEvmErc4337 } from "./src/wallet-account-read-only-evm-erc-4337.js";
 export type FeeRates = import("@wdk/wallet-evm").FeeRates;
 export type KeyPair = import("@wdk/wallet-evm").KeyPair;
 export type EvmTransaction = import("@wdk/wallet-evm").EvmTransaction;

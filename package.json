@@ -15,29 +15,29 @@
     "test:integration:coverage": "concurrently -k -s first -n \"NODE,TEST\" -c \"black,green\" \"npx hardhat node > NUL 2>&1\" \"npm run test:integration-wait:coverage\""
   },
   "dependencies": {
-    "@pimlico/alto": "^0.0.19",
-    "@pimlico/mock-paymaster": "^0.0.4",
+    "@pimlico/alto": "0.0.19",
+    "@pimlico/mock-paymaster": "0.0.4",
     "@wdk-safe-global/relay-kit": "4.1.0",
     "@wdk/wallet": "https://github.com/tetherto/wdk-wallet.git#develop",
     "@wdk/wallet-evm": "https://github.com/tetherto/wdk-wallet-evm.git#develop",
     "bare-wdk-runtime": "2.0.0",
     "ethers": "6.14.4",
-    "permissionless": "^0.2.52",
-    "prool": "^0.0.23",
-    "viem": "^2.33.1",
-    "zod-validation-error": "^4.0.1"
+    "permissionless": "0.2.52",
+    "prool": "0.0.23",
+    "viem": "2.33.1",
+    "zod-validation-error": "4.0.1"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-ethers": "^3.1.0",
-    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
-    "concurrently": "^9.2.0",
+    "@nomicfoundation/hardhat-ethers": "3.1.0",
+    "@nomicfoundation/hardhat-toolbox": "6.1.0",
+    "concurrently": "9.2.0",
     "cross-env": "7.0.3",
     "hardhat": "2.26.0",
-    "jest": "^29.7.0",
+    "jest": "29.7.0",
     "rimraf": "6.0.1",
     "standard": "17.1.2",
     "typescript": "5.8.3",
-    "wait-on": "^8.0.4"
+    "wait-on": "8.0.4"
   },
   "exports": {
     ".": {

@@ -56,9 +56,6 @@ async function waitForTx (txHash, account) {
       }
     }
   }
-
-  console.log(`tx ${txHash} mined after ${counter} second${counter === 1 ? '' : 's'}`)
-
   return receipt
 }
 

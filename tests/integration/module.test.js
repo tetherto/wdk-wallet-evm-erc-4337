@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeAll, afterAll } from '@jest/globals'
+import { describe, expect, test, beforeAll, afterAll, jest } from '@jest/globals'
 import WalletManagerEvmErc4337 from '../../index.js'
 import { ethers } from 'ethers'
 import { alto } from 'prool/instances'
@@ -377,6 +377,8 @@ describe('@wdk/wallet-evm-erc-4337', () => {
   }, TIMEOUT)
 
   test('should dispose the wallet and erase the private keys of the accounts', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
     const account0 = await wallet.getAccount(0)
     const account1 = await wallet.getAccount(1)
 
@@ -402,6 +404,8 @@ describe('@wdk/wallet-evm-erc-4337', () => {
       await expect(account.sendTransaction(TRANSACTION)).rejects.toThrow()
       await expect(account.transfer(TRANSFER)).rejects.toThrow()
     }
+
+    consoleSpy.mockRestore()
   }, TIMEOUT)
 
   test('should create a wallet with a low transfer max fee, derive an account, try to transfer some tokens and gracefully fail', async () => {

@@ -15,7 +15,6 @@ export async function discoverPaymasterAddress (paymasterUrl, entryPoint, tokenA
       id: 1,
       method: 'pm_getPaymasterData',
       params: [
-        // Mock UserOperation for discovery (EntryPoint v0.7 format)
         {
           sender: '0x0000000000000000000000000000000000000001',
           nonce: '0x0',
@@ -33,10 +32,10 @@ export async function discoverPaymasterAddress (paymasterUrl, entryPoint, tokenA
           paymasterData: null,
           signature: '0x'
         },
-        entryPoint, // EntryPoint address
-        1, // Chain ID
+        entryPoint,
+        1,
         {
-          token: tokenAddress // Mock token address
+          token: tokenAddress
         }
       ]
     })

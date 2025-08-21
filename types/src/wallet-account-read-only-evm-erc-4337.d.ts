@@ -1,3 +1,4 @@
+export const SALT_NONCE: "0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6";
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
     /**
      * Creates a new read-only evm [erc-4337](https://www.erc4337.io/docs) wallet account.

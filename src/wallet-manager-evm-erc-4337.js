@@ -15,6 +15,7 @@
 'use strict'
 
 import WalletManager from '@wdk/wallet'
+import { FEE_RATE_NORMAL_MULTIPLIER, FEE_RATE_FAST_MULTIPLIER } from '@wdk/wallet-evm'
 
 import { BrowserProvider, JsonRpcProvider } from 'ethers'
 
@@ -25,10 +26,6 @@ import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
 /** @typedef {import('@wdk/wallet-evm').FeeRates} FeeRates */
 
 /** @typedef {import('./wallet-account-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
-
-const FEE_RATE_NORMAL_MULTIPLIER = 1.1
-
-const FEE_RATE_FAST_MULTIPLIER = 2.0
 
 export default class WalletManagerEvmErc4337 extends WalletManager {
   /**

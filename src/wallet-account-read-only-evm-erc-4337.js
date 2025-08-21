@@ -43,7 +43,7 @@ import { Safe4337Pack, GenericFeeEstimator } from '@wdk-safe-global/relay-kit'
  * @property {number} [transferMaxFee] - The maximum fee amount for transfer operations.
  */
 
-const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
+export const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
 
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
   /**

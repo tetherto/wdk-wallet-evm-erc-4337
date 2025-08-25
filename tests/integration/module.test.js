@@ -232,7 +232,7 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     expect(estimatedFee).toBe(fee)
   }, TIMEOUT)
 
-  test('should derive two accounts, send a tx from account 1 to 2 and get the correct balances', async () => {
+  test('should derive two accounts, send a tx from account 0 to 1 and get the correct balances', async () => {
     const account0 = await wallet.getAccountByPath("0'/0/0")
     const account1 = await wallet.getAccountByPath("0'/0/1")
 
@@ -275,7 +275,7 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     expect(fee).toBe(fee)
   }, TIMEOUT)
 
-  test('should derive two accounts by their paths, transfer a token from account 1 to 2 and get the correct balances and token balances', async () => {
+  test('should derive two accounts by their paths, transfer a token from account 0 to 1 and get the correct balances and token balances', async () => {
     const account0 = await wallet.getAccountByPath("0'/0/0")
 
     const safeAddress0 = await account0.getAddress()
@@ -300,7 +300,7 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     expect(balance1After).toBe(balance1Before + 1n)
   }, TIMEOUT)
 
-  test('should derive two accounts, approve x tokens from account 1 to 2, transfer x tokens from account 1 to 2 and get the correct balances and token balances', async () => {
+  test('should derive two accounts, approve x tokens from account 0 to 1, transfer x tokens from account 1 to 2 and get the correct balances and token balances', async () => {
     const account0 = await wallet.getAccountByPath("0'/0/0")
     const account1 = await wallet.getAccountByPath("0'/0/1")
 

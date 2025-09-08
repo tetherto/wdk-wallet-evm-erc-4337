@@ -99,7 +99,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @returns {string} The predicted Safe address.
    */
-  getSafeAddress () {
+  predictSafeAddress () {
     const safeAddress = Safe4337Pack.predictSafeAddress({
       threshold: 1,
       owner: this._ownerAccountAddress,

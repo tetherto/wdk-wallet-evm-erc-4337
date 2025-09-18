@@ -209,9 +209,9 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     })
 
     const safeAddress0 = await account0.getAddress()
-    const safeAddress0Predicted = account0.getSafeAddress()
+    const safeAddress0Predicted = account0.predictSafeAddress()
     const safeAddress1 = await account1.getAddress()
-    const safeAddress1Predicted = account1.getSafeAddress()
+    const safeAddress1Predicted = account1.predictSafeAddress()
 
     expect(safeAddress0).toBe(safeAddress0Predicted)
     expect(safeAddress1).toBe(safeAddress1Predicted)
@@ -243,8 +243,8 @@ describe('@wdk/wallet-evm-erc-4337', () => {
 
     const safeAddress0 = await account0.getAddress()
     const safeAddress1 = await account1.getAddress()
-    const safeAddress0Predicted = account0.getSafeAddress()
-    const safeAddress1Predicted = account1.getSafeAddress()
+    const safeAddress0Predicted = account0.predictSafeAddress()
+    const safeAddress1Predicted = account1.predictSafeAddress()
 
     expect(safeAddress0).toBe(safeAddress0Predicted)
     expect(safeAddress1).toBe(safeAddress1Predicted)

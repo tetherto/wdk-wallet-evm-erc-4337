@@ -16,6 +16,8 @@
 
 import WalletManager from '@wdk/wallet'
 
+import WalletManagerEvm from '@wdk/wallet-evm'
+
 import { BrowserProvider, JsonRpcProvider } from 'ethers'
 
 import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
@@ -25,10 +27,6 @@ import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
 /** @typedef {import('@wdk/wallet-evm').FeeRates} FeeRates */
 
 /** @typedef {import('./wallet-account-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
-
-const FEE_RATE_NORMAL_MULTIPLIER = 1.1
-
-const FEE_RATE_FAST_MULTIPLIER = 2.0
 
 export default class WalletManagerEvmErc4337 extends WalletManager {
   /**
@@ -47,14 +45,6 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
      * @type {EvmErc4337WalletConfig}
      */
     this._config = config
-
-    /**
-     * A map between derivation paths and wallet accounts. It contains all the wallet accounts that have been accessed through the {@link getAccount} and {@link getAccountByPath} methods.
-     *
-     * @protected
-     * @type {{ [path: string]: WalletAccountEvmErc4337 }}
-     */
-    this._accounts = {}
 
     const { provider } = config
 
@@ -109,24 +99,15 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    * @returns {Promise<FeeRates>} The fee rates (in weis).
    */
   async getFeeRates () {
-    const feeData = await this._provider.getFeeData()
+    if (!this._provider) {
+      throw new Error('The wallet must be connected to a provider to get fee rates.')
+    }
 
-    const maxFeePerGas = Number(feeData.maxFeePerGas)
+    const { maxFeePerGas } = await this._provider.getFeeData()
 
     return {
-      normal: Math.round(maxFeePerGas * FEE_RATE_NORMAL_MULTIPLIER),
-      fast: maxFeePerGas * FEE_RATE_FAST_MULTIPLIER
+      normal: maxFeePerGas * WalletManagerEvm._FEE_RATE_NORMAL_MULTIPLIER / 100n,
+      fast: maxFeePerGas * WalletManagerEvm._FEE_RATE_FAST_MULTIPLIER / 100n
     }
-  }
-
-  /**
-   * Disposes all the wallet accounts, erasing their private keys from the memory.
-   */
-  dispose () {
-    for (const account of Object.values(this._accounts)) {
-      account.dispose()
-    }
-
-    this._accounts = {}
   }
 }

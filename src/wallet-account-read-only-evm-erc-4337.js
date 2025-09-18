@@ -40,10 +40,10 @@ import { Safe4337Pack, GenericFeeEstimator } from '@wdk-safe-global/relay-kit'
  * @property {string} safeModulesVersion - The safe modules version.
  * @property {Object} paymasterToken - The paymaster token configuration.
  * @property {string} paymasterToken.address - The address of the paymaster token.
- * @property {number} [transferMaxFee] - The maximum fee amount for transfer operations.
+ * @property {number | bigint} [transferMaxFee] - The maximum fee amount for transfer operations.
  */
 
-const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
+export const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
 
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
   /**
@@ -86,6 +86,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     this._ownerAccountAddress = address
   }
 
+  /**
+   * Returns the account's address.
+   *
+   * @returns {Promise<string>} The account's address.
+   */
   async getAddress () {
     const safe4337pack = await this._getSafe4337Pack()
 
@@ -115,7 +120,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   /**
    * Returns the account's eth balance.
    *
-   * @returns {Promise<number>} The eth balance (in weis).
+   * @returns {Promise<bigint>} The eth balance (in weis).
    */
   async getBalance () {
     const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
@@ -127,7 +132,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Returns the account balance for a specific token.
    *
    * @param {string} tokenAddress - The smart contract address of the token.
-   * @returns {Promise<number>} The token balance (in base unit).
+   * @returns {Promise<bigint>} The token balance (in base unit).
    */
   async getTokenBalance (tokenAddress) {
     const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
@@ -138,7 +143,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   /**
    * Returns the account's balance for the paymaster token provided in the wallet account configuration.
    *
-   * @returns {Promise<number>} The paymaster token balance (in base unit).
+   * @returns {Promise<bigint>} The paymaster token balance (in base unit).
    */
   async getPaymasterTokenBalance () {
     const { paymasterToken } = this._config
@@ -161,7 +166,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       amountToApprove: BigInt(Number.MAX_SAFE_INTEGER)
     })
 
-    return { fee }
+    return { fee: BigInt(fee) }
   }
 
   /**

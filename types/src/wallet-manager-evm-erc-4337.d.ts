@@ -14,15 +14,6 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
      */
     protected _config: EvmErc4337WalletConfig;
     /**
-     * A map between derivation paths and wallet accounts. It contains all the wallet accounts that have been accessed through the {@link getAccount} and {@link getAccountByPath} methods.
-     *
-     * @protected
-     * @type {{ [path: string]: WalletAccountEvmErc4337 }}
-     */
-    protected _accounts: {
-        [path: string]: WalletAccountEvmErc4337;
-    };
-    /**
      * An ethers provider to interact with a node of the blockchain.
      *
      * @protected
@@ -55,10 +46,6 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
      * @returns {Promise<FeeRates>} The fee rates (in weis).
      */
     getFeeRates(): Promise<FeeRates>;
-    /**
-     * Disposes all the wallet accounts, erasing their private keys from the memory.
-     */
-    dispose(): void;
 }
 export type Provider = import("ethers").Provider;
 export type FeeRates = import("@wdk/wallet-evm").FeeRates;

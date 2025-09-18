@@ -18,7 +18,7 @@ import { WalletAccountEvm } from '@wdk/wallet-evm'
 
 import { Safe4337Pack } from '@wdk-safe-global/relay-kit'
 
-import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-4337.js'
+import WalletAccountReadOnlyEvmErc4337, { SALT_NONCE } from './wallet-account-read-only-evm-erc-4337.js'
 
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
@@ -33,9 +33,7 @@ import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-
 
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
 
-const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
-
-const FEE_TOLERANCE_COEFFICIENT = 1.2
+const FEE_TOLERANCE_COEFFICIENT = 120n
 
 /** @implements {IWalletAccount} */
 export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc4337 {
@@ -125,7 +123,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     const hash = await this._sendUserOperation([tx].flat(), {
       paymasterTokenAddress: paymasterToken.address,
-      amountToApprove: BigInt(Math.ceil(fee * FEE_TOLERANCE_COEFFICIENT))
+      amountToApprove: BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
     })
 
     return { hash, fee }
@@ -151,7 +149,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     const hash = await this._sendUserOperation([tx], {
       paymasterTokenAddress: paymasterToken.address,
-      amountToApprove: BigInt(Math.ceil(fee * FEE_TOLERANCE_COEFFICIENT))
+      amountToApprove: BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
     })
 
     return { hash, fee }

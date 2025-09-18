@@ -2,11 +2,18 @@
   "name": "@wdk/wallet-evm-erc-4337",
   "version": "1.0.0-beta.1",
   "description": "A simple package to manage BIP-32 wallets for evm blockchains, which implement the erc-4337 standard and its account abstraction features",
+  "keywords": ["wdk", "wallet", "bip-32", "ethereum", "erc-4337"],
+  "author": "Tether",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/tetherto/wdk-wallet-evm-erc-4337.git"
+  },
   "main": "index.js",
   "type": "module",
   "types": "./types",
   "scripts": {
-    "build:types": "rimraf *.d.ts **/*.d.ts; tsc",
+    "build:types": "tsc",
     "lint": "standard",
     "lint:fix": "standard --fix",
     "test:integration-wait": "wait-on http://localhost:8545 && cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/integration",
@@ -17,7 +24,7 @@
   "dependencies": {
     "@pimlico/alto": "0.0.19",
     "@pimlico/mock-paymaster": "0.0.4",
-    "@wdk-safe-global/relay-kit": "4.1.0",
+    "@wdk-safe-global/relay-kit": "4.1.3",
     "@wdk/wallet": "https://github.com/tetherto/wdk-wallet.git#develop",
     "@wdk/wallet-evm": "https://github.com/tetherto/wdk-wallet-evm.git#develop",
     "bare-wdk-runtime": "2.0.0",
@@ -54,5 +61,11 @@
     "./package": {
       "default": "./package.json"
     }
+  },
+  "standard": {
+    "ignore": [
+      "bare.js",
+      "tests/**/*.js"
+    ]
   }
 }

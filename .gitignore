@@ -1,4 +1,7 @@
+# JS
 node_modules
 coverage
-cache
-artifacts
+
+# Hardhat
+/cache
+/artifacts

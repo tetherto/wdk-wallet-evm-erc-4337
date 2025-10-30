@@ -1,4 +1,4 @@
-const PROVIDER = 'http://127.0.0.1:8546'
+import { ANVIL_PROVIDER } from './globalConfig'
 
 const sleep = async (ms = 1000) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -7,7 +7,7 @@ const checkRpcStatus = async (count = 0) => {
 
   try {
     await sleep()
-    const res = await fetch(PROVIDER, {
+    const res = await fetch(ANVIL_PROVIDER, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -17,7 +17,7 @@ const checkRpcStatus = async (count = 0) => {
         id: 1,
       }),
     })
-    if (res.ok) return PROVIDER
+    if (res.ok) return ANVIL_PROVIDER
     return await checkRpcStatus(++count)
   } catch {
     return await checkRpcStatus(++count)

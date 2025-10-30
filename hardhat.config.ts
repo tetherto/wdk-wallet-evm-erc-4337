@@ -1,11 +1,13 @@
 import { HardhatUserConfig } from 'hardhat/config'
+import hardhatNetworkHelpers from '@nomicfoundation/hardhat-network-helpers'
 
 export default {
   solidity: '0.8.24',
   networks: {
-    localnet: {
+    base: {
       type: 'edr-simulated',
-      chainType: 'l1',
+      chainType: 'op',
+      chainId: 8453,
       accounts: {
         mnemonic: 'anger burst story spy face pattern whale quit delay fiction ball solve',
         path: "m/44'/60'/0'/0",
@@ -18,4 +20,5 @@ export default {
       },
     },
   },
+  plugins: [hardhatNetworkHelpers],
 } satisfies HardhatUserConfig

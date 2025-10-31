@@ -40,7 +40,7 @@
     "concurrently": "9.2.1",
     "hardhat": "3.0.9",
     "hono": "4.10.3",
-    "noba": "1.6.1",
+    "noba": "1.6.1-next.2",
     "permissionless": "0.2.57",
     "prool": "0.0.24",
     "standard": "17.1.2",

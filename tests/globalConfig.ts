@@ -8,8 +8,10 @@ import { hardhat } from 'viem/chains'
 export const shims: Partial<{ imports: string }> =
   'Bare' in global ? { imports: 'bare-wdk-runtime/package' } : {}
 
-export const HARDHAT_PROVIDER = 'http://127.0.0.1:8545'
-export const ANVIL_PROVIDER = 'http://127.0.0.1:8546'
+export const HARDHAT_PROVIDER = 'http://localhost:8545'
+export const ANVIL_PROVIDER = 'http://localhost:8546'
+
+export const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
 
 export const getSigners = (numberOfAccounts = 3) => {
   return Array.from({ length: numberOfAccounts }).map((_, i) => {

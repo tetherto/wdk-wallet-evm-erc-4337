@@ -1,5 +1,5 @@
 import { describe } from 'noba'
-import { ANVIL_PROVIDER, getPaymasterAddress, getSigners, shims } from './globalConfig'
+import { ANVIL_PROVIDER, getPaymasterAddress, getSigners, SALT_NONCE, shims } from './globalConfig'
 import { WalletAccountReadOnlyEvmErc4337 } from '@tetherto/wdk-wallet-evm-erc-4337'
 import {
   erc20Abi,
@@ -23,7 +23,7 @@ import { network } from 'hardhat'
 import { SnapshotRestorer } from '@nomicfoundation/hardhat-network-helpers/types'
 import { createSmartAccountClient } from 'permissionless'
 import { createPimlicoClient } from 'permissionless/clients/pimlico'
-import { toSimpleSmartAccount } from 'permissionless/accounts'
+import { toSafeSmartAccount } from 'permissionless/accounts'
 import { prepareUserOperationForErc20Paymaster } from 'permissionless/experimental/pimlico'
 import hardhatConfig from '../hardhat.config'
 
@@ -38,8 +38,6 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
   let snapshot: SnapshotRestorer
 
   const [executor, user] = getSigners()
-
-  let smartAccount: Awaited<ReturnType<typeof toSimpleSmartAccount>>
 
   const altoInstance = alto({
     port: 4337,
@@ -71,17 +69,6 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
     await paymasterInstance.start()
 
     paymasterAddress = await getPaymasterAddress(paymasterRpc)
-
-    smartAccount = await toSimpleSmartAccount({
-      client: publicClient,
-      owner: user,
-    })
-
-    await sudoMintTokens({
-      amount: INITIAL_TOKEN_BALANCE,
-      to: smartAccount.address,
-      anvilRpc: ANVIL_PROVIDER,
-    })
   })
 
   afterAll(async () => {
@@ -107,6 +94,24 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
     const pimlicoClient = createPimlicoClient({
       chain: base,
       transport: http(paymasterRpc),
+    })
+
+    const smartAccount = await toSafeSmartAccount({
+      client: publicClient,
+      entryPoint: {
+        address: entryPoint07Address,
+        version: '0.7',
+      },
+      owners: [user],
+      version: '1.4.1',
+      threshold: 1n,
+      saltNonce: BigInt(SALT_NONCE),
+    })
+
+    await sudoMintTokens({
+      amount: INITIAL_TOKEN_BALANCE,
+      to: smartAccount.address,
+      anvilRpc: ANVIL_PROVIDER,
     })
 
     test('should send a sponsored userOperation successfully', async ({ expect }) => {
@@ -188,7 +193,7 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
   })
 
   describe('read', async ({ test }) => {
-    const account = new WalletAccountReadOnlyEvmErc4337(smartAccount.address, {
+    const account = new WalletAccountReadOnlyEvmErc4337(user.address, {
       chainId: base.id,
       provider: ANVIL_PROVIDER,
       bundlerUrl: altoRpc,
@@ -199,15 +204,37 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
       paymasterToken: { address: erc20Address },
     })
 
-    test('should return an empty balance', async ({ expect, log }) => {
+    const smartAccount = await toSafeSmartAccount({
+      address: (await account.getAddress()) as Address,
+      client: publicClient,
+      entryPoint: {
+        address: entryPoint07Address,
+        version: '0.7',
+      },
+      owners: [user],
+      version: '1.4.1',
+      threshold: 1n,
+      saltNonce: BigInt(SALT_NONCE),
+    })
+
+    await sudoMintTokens({
+      amount: INITIAL_TOKEN_BALANCE,
+      to: smartAccount.address,
+      anvilRpc: ANVIL_PROVIDER,
+    })
+
+    test('should be valid smart account address', async ({ expect }) => {
+      const address = await account.getAddress()
+      expect(address).to.equal(smartAccount.address)
+    })
+
+    test('should return an empty balance', async ({ expect }) => {
       const balance = await account.getBalance()
-      log(balance)
       expect(balance).to.equal(0n)
     })
 
     test('should return an valid erc20 balance', async ({ expect, log }) => {
       const balance = await account.getTokenBalance(erc20Address)
-      log(balance)
       expect(balance).to.equal(INITIAL_TOKEN_BALANCE)
     })
   })

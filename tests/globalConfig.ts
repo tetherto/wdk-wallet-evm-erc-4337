@@ -1,8 +1,8 @@
-import { http, zeroAddress } from 'viem'
+import hardhatConfig from '../hardhat.config'
+
+import { createPublicClient, Hex, http, zeroAddress } from 'viem'
 import { mnemonicToAccount } from 'viem/accounts'
 import { createPaymasterClient, entryPoint07Address } from 'viem/account-abstraction'
-
-import hardhatConfig from '../hardhat.config'
 import { hardhat } from 'viem/chains'
 
 export const shims: Partial<{ imports: string }> =
@@ -40,4 +40,28 @@ export const getPaymasterAddress = async (paymasterRpc: string) => {
   if (!paymaster) throw new Error('Cannot get the paymaster address')
 
   return paymaster
+}
+
+export const createExtendedPublicClient = (...params: Parameters<typeof createPublicClient>) => {
+  return createPublicClient(...params).extend((client) => ({
+    async takeSnapshot() {
+      const snapshotId = await client.request<{
+        method: 'evm_snapshot'
+        params: []
+        ReturnType: Hex
+      }>({ method: 'evm_snapshot', params: [] })
+      return snapshotId
+    },
+    async restore(snapshotId: Hex) {
+      const reverted = await client.request<{
+        method: 'evm_revert'
+        params: [string]
+        ReturnType: boolean
+      }>({
+        method: 'evm_revert',
+        params: [snapshotId],
+      })
+      return reverted
+    },
+  }))
 }

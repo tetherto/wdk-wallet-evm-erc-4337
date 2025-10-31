@@ -34,7 +34,7 @@
   },
   "devDependencies": {
     "@hono/node-server": "1.19.5",
-    "@nomicfoundation/hardhat-network-helpers": "3.0.1",
+    "@nomicfoundation/hardhat-network-helpers": "^3.0.1",
     "@pimlico/alto": "0.0.19",
     "@pimlico/mock-paymaster": "0.0.5",
     "concurrently": "9.2.1",

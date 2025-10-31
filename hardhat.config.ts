@@ -1,5 +1,4 @@
-import { HardhatUserConfig } from 'hardhat/config'
-import hardhatNetworkHelpers from '@nomicfoundation/hardhat-network-helpers'
+import type { HardhatUserConfig } from 'hardhat/config'
 
 export default {
   solidity: '0.8.24',
@@ -20,5 +19,4 @@ export default {
       },
     },
   },
-  plugins: [hardhatNetworkHelpers],
 } satisfies HardhatUserConfig

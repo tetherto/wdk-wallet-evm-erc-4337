@@ -26,10 +26,11 @@ const checkRpcStatus = async (count = 0) => {
 }
 
 const setPaymasterUtilityBalance = async () => {
+  // https://github.com/pimlicolabs/permissionless.js/blob/cdb8c95792101e18f6146ad1f5efa9fa0109ba63/packages/mock-paymaster/helpers/erc20-utils.ts#L42
   const account = privateKeyToAccount(
     '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   )
-  const res = await fetch(HARDHAT_PROVIDER, {
+  await fetch(HARDHAT_PROVIDER, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -39,7 +40,7 @@ const setPaymasterUtilityBalance = async () => {
         account.address,
         '0x3635c9adc5dea00000', // 1000 ETH
       ],
-      id: 1,
+      id: 2,
     }),
   })
 }

@@ -8,7 +8,16 @@ import {
 } from './globalConfig'
 
 import { WalletAccountReadOnlyEvmErc4337 } from '@tetherto/wdk-wallet-evm-erc-4337'
-import { Address, createWalletClient, http, parseEther, toHex } from 'viem'
+import {
+  Address,
+  createWalletClient,
+  encodeFunctionData,
+  erc20Abi,
+  getContract,
+  http,
+  parseEther,
+  toHex,
+} from 'viem'
 import { base } from 'viem/chains'
 import { waitForTransactionReceipt } from 'viem/actions'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
@@ -57,7 +66,9 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({
     anvilRpc: HARDHAT_PROVIDER,
     altoRpc,
   })
-  const paymasterRpc = `http://${paymasterInstance.host}:${paymasterInstance.port}`
+  // `?pimlico=true` tricks 3rd parties to detect this being pimlico url
+  // https://www.npmjs.com/package/@wdk-safe-global/relay-kit?activeTab=code#:~:text=getTokenExchangeRate
+  const paymasterRpc = `http://${paymasterInstance.host}:${paymasterInstance.port}?pimlico=true`
 
   beforeAll(async () => {
     await altoInstance.start()
@@ -92,13 +103,13 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({
   })
 
   describe('getBalance', async ({ test }) => {
-    test('should return the correct balance of the account', async ({ assert }) => {
+    test('should return the correct balance of the account', async ({ expect }) => {
       const balance = await account.getBalance()
 
-      assert.strictEqual(balance, parseEther('0'))
+      expect(balance).to.equal(parseEther('0'))
     })
 
-    test('should throw if the account is not connected to a provider', async ({ assert }) => {
+    test('should throw if the account is not connected to a provider', async ({ expect }) => {
       const account = new WalletAccountReadOnlyEvmErc4337(owner.address, {
         chainId: base.id,
         provider: '',
@@ -110,75 +121,48 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({
         paymasterToken: { address: erc20Address },
       })
 
-      await assert.rejects(async () => {
+      await expect(async () => {
         await account.getBalance()
-      }, /No URL was provided to the Transport\./)
+      }).rejects(/No URL was provided to the Transport\./)
     })
   })
 
-  describe('prool', async ({ test }) => {
+  describe('getPaymasterBalance', async ({ test }) => {
+    test('should return the correct balance of the paymaster', async ({ expect }) => {
+      const balance = await account.getPaymasterTokenBalance()
+
+      expect(balance).to.equal(1000000000000000000n)
+    })
+  })
+
+  describe('quoteSendTransaction', async ({ test }) => {
     const recipient = privateKeyToAccount(generatePrivateKey())
 
-    const pimlicoClient = createPimlicoClient({
-      chain: base,
-      transport: http(paymasterRpc),
+    test('should successfully quote a transaction', async ({ expect }) => {
+      const TRANSACTION = {
+        to: recipient.address,
+        value: 0,
+        data: '0x',
+      }
+
+      const { fee } = await account.quoteSendTransaction(TRANSACTION)
+      expect(fee > 0n).to.be(true)
     })
 
-    const smartAccount = await toSafeSmartAccount({
-      client: publicClient,
-      entryPoint: {
-        address: entryPoint07Address,
-        version: '0.7',
-      },
-      owners: [owner],
-      version: '1.4.1',
-      threshold: 1n,
-      saltNonce: BigInt(SALT_NONCE),
-    })
+    test('should successfully quote a transaction with arbitrary data', async ({ expect }) => {
+      const TRANSACTION_WITH_DATA = {
+        to: erc20Address,
+        value: 0,
+        data: encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [paymasterAddress],
+        }),
+      }
 
-    test('should send a sponsored userOperation successfully', async ({ expect }) => {
-      const smartAccountClient = createSmartAccountClient({
-        account: smartAccount,
-        bundlerTransport: http(altoRpc),
-        paymaster: pimlicoClient,
-        userOperation: {
-          estimateFeesPerGas: async () => {
-            const { fast } = await pimlicoClient.getUserOperationGasPrice()
-            return fast
-          },
-        },
-      })
+      const { fee } = await account.quoteSendTransaction(TRANSACTION_WITH_DATA)
 
-      const userOpHash = await smartAccountClient.sendUserOperation({
-        calls: [
-          {
-            to: recipient.address,
-            value: 0n,
-            data: '0x',
-          },
-        ],
-      })
-
-      const receipt = await smartAccountClient.waitForUserOperationReceipt({
-        hash: userOpHash,
-        timeout: 0,
-      })
-      expect(receipt.success).to.be(true)
+      expect(fee > 0n).to.be(true)
     })
   })
-
-  // describe('quoteSendTransaction', async ({ test }) => {
-  //   const recipient = privateKeyToAccount(generatePrivateKey())
-
-  //   test('should successfully quote a transaction', async ({ assert }) => {
-  //     const TRANSACTION = {
-  //       to: recipient.address,
-  //       value: 0,
-  //       data: '0x',
-  //     }
-
-  //     const { fee } = await account.quoteSendTransaction(TRANSACTION)
-  //     console.log(fee)
-  //   })
-  // })
 })

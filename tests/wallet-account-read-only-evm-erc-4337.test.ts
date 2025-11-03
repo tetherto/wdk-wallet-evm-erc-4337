@@ -1,64 +1,184 @@
 import { describe } from 'noba'
-import { ANVIL_PROVIDER, createExtendedPublicClient, getSigners } from './globalConfig'
+import {
+  HARDHAT_PROVIDER,
+  createExtendedPublicClient,
+  getPaymasterAddress,
+  getSigners,
+  SALT_NONCE,
+} from './globalConfig'
 
-import { network } from 'hardhat'
-import { createPublicClient, createWalletClient, Hex, http, parseEther, RpcSchema } from 'viem'
+import { WalletAccountReadOnlyEvmErc4337 } from '@tetherto/wdk-wallet-evm-erc-4337'
+import { Address, createWalletClient, http, parseEther, toHex } from 'viem'
 import { base } from 'viem/chains'
 import { waitForTransactionReceipt } from 'viem/actions'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
+import { alto } from 'prool/instances'
+import {
+  entryPoint06Address,
+  entryPoint07Address,
+  entryPoint08Address,
+} from 'viem/account-abstraction'
+import { erc20Address, paymaster, sudoMintTokens } from '@pimlico/mock-paymaster'
+import { createPimlicoClient } from 'permissionless/clients/pimlico'
+import { toSafeSmartAccount } from 'permissionless/accounts'
+import { createSmartAccountClient } from 'permissionless'
 
 const INITIAL_TOKEN_BALANCE = parseEther('1')
 
-describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeEach, afterEach }) => {
+describe('WalletAccountReadOnlyEvmErc4337', async ({
+  describe,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  afterAll,
+}) => {
+  let account: WalletAccountReadOnlyEvmErc4337
+
   const publicClient = createExtendedPublicClient({
     chain: base,
-    transport: http(ANVIL_PROVIDER),
+    transport: http(HARDHAT_PROVIDER),
   })
   const snapshot = await publicClient.takeSnapshot()
 
-  beforeEach(async ({ log }) => {
-    console.log('beforeEach')
+  const [executor, owner] = getSigners()
+  const altoInstance = alto({
+    port: 4337,
+    entrypoints: [entryPoint06Address, entryPoint07Address, entryPoint08Address],
+    rpcUrl: HARDHAT_PROVIDER,
+    executorPrivateKeys: [toHex(executor.getHdKey().privateKey!)],
+    utilityPrivateKey: toHex(executor.getHdKey().privateKey!),
+    safeMode: false,
+  })
+  const altoRpc = `http://${altoInstance.host}:${altoInstance.port}`
+
+  let paymasterAddress: Address
+  const paymasterInstance = paymaster({
+    port: 3000,
+    anvilRpc: HARDHAT_PROVIDER,
+    altoRpc,
+  })
+  const paymasterRpc = `http://${paymasterInstance.host}:${paymasterInstance.port}`
+
+  beforeAll(async () => {
+    await altoInstance.start()
+    await paymasterInstance.start()
+
+    paymasterAddress = await getPaymasterAddress(paymasterRpc)
+
+    account = new WalletAccountReadOnlyEvmErc4337(owner.address, {
+      chainId: base.id,
+      provider: HARDHAT_PROVIDER,
+      bundlerUrl: altoRpc,
+      paymasterUrl: paymasterRpc,
+      paymasterAddress,
+      entryPointAddress: entryPoint07Address,
+      safeModulesVersion: '0.3.0',
+      paymasterToken: { address: erc20Address },
+    })
+
+    const smartAccountAddress = (await account.getAddress()) as `0x${string}`
+    await sudoMintTokens({
+      amount: INITIAL_TOKEN_BALANCE,
+      to: smartAccountAddress,
+      anvilRpc: HARDHAT_PROVIDER,
+    })
   })
 
-  afterEach(async ({ log }) => {
-    console.log('afterEach')
+  afterAll(async () => {
+    await paymasterInstance.stop()
+    await altoInstance.stop()
+
     await publicClient.restore(snapshot)
   })
 
-  describe('network reset', async ({ test }) => {
-    const receiver = privateKeyToAccount(generatePrivateKey())
+  describe('getBalance', async ({ test }) => {
+    test('should return the correct balance of the account', async ({ assert }) => {
+      const balance = await account.getBalance()
 
-    const [signer] = getSigners()
-    const walletClient = createWalletClient({
-      account: signer,
-      chain: base,
-      transport: http(ANVIL_PROVIDER),
+      assert.strictEqual(balance, parseEther('0'))
     })
 
-    test('#1', async ({ expect }) => {
-      const txId = await walletClient.sendTransaction({
-        to: receiver.address,
-        value: INITIAL_TOKEN_BALANCE,
+    test('should throw if the account is not connected to a provider', async ({ assert }) => {
+      const account = new WalletAccountReadOnlyEvmErc4337(owner.address, {
+        chainId: base.id,
+        provider: '',
+        bundlerUrl: altoRpc,
+        paymasterUrl: paymasterRpc,
+        paymasterAddress,
+        entryPointAddress: entryPoint07Address,
+        safeModulesVersion: '0.3.0',
+        paymasterToken: { address: erc20Address },
       })
 
-      const receipt = await waitForTransactionReceipt(publicClient, { hash: txId })
-      expect(receipt.status).to.be('success')
-
-      const balance = await publicClient.getBalance({ address: receiver.address })
-      expect(balance).to.be(INITIAL_TOKEN_BALANCE)
-    })
-
-    test('#2', async ({ expect }) => {
-      const txId = await walletClient.sendTransaction({
-        to: receiver.address,
-        value: INITIAL_TOKEN_BALANCE,
-      })
-
-      const receipt = await waitForTransactionReceipt(publicClient, { hash: txId })
-      expect(receipt.status).to.be('success')
-
-      const balance = await publicClient.getBalance({ address: receiver.address })
-      expect(balance).to.be(INITIAL_TOKEN_BALANCE)
+      await assert.rejects(async () => {
+        await account.getBalance()
+      }, /No URL was provided to the Transport\./)
     })
   })
+
+  describe('prool', async ({ test }) => {
+    const recipient = privateKeyToAccount(generatePrivateKey())
+
+    const pimlicoClient = createPimlicoClient({
+      chain: base,
+      transport: http(paymasterRpc),
+    })
+
+    const smartAccount = await toSafeSmartAccount({
+      client: publicClient,
+      entryPoint: {
+        address: entryPoint07Address,
+        version: '0.7',
+      },
+      owners: [owner],
+      version: '1.4.1',
+      threshold: 1n,
+      saltNonce: BigInt(SALT_NONCE),
+    })
+
+    test('should send a sponsored userOperation successfully', async ({ expect }) => {
+      const smartAccountClient = createSmartAccountClient({
+        account: smartAccount,
+        bundlerTransport: http(altoRpc),
+        paymaster: pimlicoClient,
+        userOperation: {
+          estimateFeesPerGas: async () => {
+            const { fast } = await pimlicoClient.getUserOperationGasPrice()
+            return fast
+          },
+        },
+      })
+
+      const userOpHash = await smartAccountClient.sendUserOperation({
+        calls: [
+          {
+            to: recipient.address,
+            value: 0n,
+            data: '0x',
+          },
+        ],
+      })
+
+      const receipt = await smartAccountClient.waitForUserOperationReceipt({
+        hash: userOpHash,
+        timeout: 0,
+      })
+      expect(receipt.success).to.be(true)
+    })
+  })
+
+  // describe('quoteSendTransaction', async ({ test }) => {
+  //   const recipient = privateKeyToAccount(generatePrivateKey())
+
+  //   test('should successfully quote a transaction', async ({ assert }) => {
+  //     const TRANSACTION = {
+  //       to: recipient.address,
+  //       value: 0,
+  //       data: '0x',
+  //     }
+
+  //     const { fee } = await account.quoteSendTransaction(TRANSACTION)
+  //     console.log(fee)
+  //   })
+  // })
 })

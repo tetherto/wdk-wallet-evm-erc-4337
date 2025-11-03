@@ -23,7 +23,7 @@
     "lint": "standard",
     "lint:fix": "standard --fix",
     "test": "noba --register tsx tests/*.test.ts",
-    "test:node": "concurrently --names RPC,RELAY,NODE -c cyan,magenta,yellow --hide RPC,RELAY --kill-others --success=command-NODE 'hardhat node --network base' 'tsx relay.ts' 'noba --timeout 60000 --register tsx --globalSetup tests/globalSetup.ts tests/*.test.ts'"
+    "test:node": "concurrently --names RPC,NODE -c cyan,yellow --hide RPC --kill-others --success=command-NODE 'hardhat node --network base' 'noba --timeout 60000 --register tsx --globalSetup tests/globalSetup.ts tests/*.test.ts'"
   },
   "dependencies": {
     "@tetherto/wdk-wallet": "^1.0.0-beta.1",
@@ -33,13 +33,11 @@
     "ethers": "6.14.4"
   },
   "devDependencies": {
-    "@hono/node-server": "1.19.5",
     "@nomicfoundation/hardhat-network-helpers": "^3.0.1",
     "@pimlico/alto": "0.0.19",
     "@pimlico/mock-paymaster": "0.0.5",
     "concurrently": "9.2.1",
     "hardhat": "3.0.9",
-    "hono": "4.10.3",
     "noba": "1.6.1-next.2",
     "permissionless": "0.2.57",
     "prool": "0.0.24",

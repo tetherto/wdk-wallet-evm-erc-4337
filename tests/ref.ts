@@ -19,8 +19,6 @@ import {
 } from 'viem/account-abstraction'
 import { alto } from 'prool/instances'
 import { erc20Address, paymaster, sudoMintTokens } from '@pimlico/mock-paymaster'
-import { network } from 'hardhat'
-import { SnapshotRestorer } from '@nomicfoundation/hardhat-network-helpers/types'
 import { createSmartAccountClient } from 'permissionless'
 import { createPimlicoClient } from 'permissionless/clients/pimlico'
 import { toSafeSmartAccount } from 'permissionless/accounts'
@@ -34,9 +32,6 @@ import hardhatConfig from '../hardhat.config'
 const INITIAL_TOKEN_BALANCE = parseEther('1')
 
 describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterAll }) => {
-  const { networkHelpers } = await network.connect()
-  let snapshot: SnapshotRestorer
-
   const [executor, user] = getSigners()
 
   const altoInstance = alto({
@@ -63,8 +58,6 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
   })
 
   beforeAll(async () => {
-    snapshot = await networkHelpers.takeSnapshot()
-
     await altoInstance.start()
     await paymasterInstance.start()
 
@@ -74,8 +67,6 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
   afterAll(async () => {
     await paymasterInstance.stop()
     await altoInstance.stop()
-
-    await snapshot.restore()
   })
 
   describe('fork', async ({ test }) => {

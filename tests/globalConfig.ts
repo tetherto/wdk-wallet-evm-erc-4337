@@ -9,7 +9,6 @@ export const shims: Partial<{ imports: string }> =
   'Bare' in global ? { imports: 'bare-wdk-runtime/package' } : {}
 
 export const HARDHAT_PROVIDER = 'http://localhost:8545'
-export const ANVIL_PROVIDER = 'http://localhost:8546'
 
 export const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
 
@@ -46,16 +45,17 @@ export const createExtendedPublicClient = (...params: Parameters<typeof createPu
   return createPublicClient(...params).extend((client) => ({
     async takeSnapshot() {
       const snapshotId = await client.request<{
-        method: 'evm_snapshot'
-        params: []
+        Method: 'evm_snapshot'
+        Params: []
         ReturnType: Hex
       }>({ method: 'evm_snapshot', params: [] })
       return snapshotId
     },
+
     async restore(snapshotId: Hex) {
       const reverted = await client.request<{
-        method: 'evm_revert'
-        params: [string]
+        Method: 'evm_revert'
+        Params: [string]
         ReturnType: boolean
       }>({
         method: 'evm_revert',

@@ -1,4 +1,5 @@
-import { ANVIL_PROVIDER } from './globalConfig'
+import { privateKeyToAccount } from 'viem/accounts'
+import { HARDHAT_PROVIDER } from './globalConfig'
 
 const sleep = async (ms = 1000) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -7,7 +8,7 @@ const checkRpcStatus = async (count = 0) => {
 
   try {
     await sleep()
-    const res = await fetch(ANVIL_PROVIDER, {
+    const res = await fetch(HARDHAT_PROVIDER, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -17,13 +18,33 @@ const checkRpcStatus = async (count = 0) => {
         id: 1,
       }),
     })
-    if (res.ok) return ANVIL_PROVIDER
+    if (res.ok) return true
     return await checkRpcStatus(++count)
   } catch {
     return await checkRpcStatus(++count)
   }
 }
 
+const setPaymasterUtilityBalance = async () => {
+  const account = privateKeyToAccount(
+    '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  )
+  const res = await fetch(HARDHAT_PROVIDER, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'hardhat_setBalance',
+      params: [
+        account.address,
+        '0x3635c9adc5dea00000', // 1000 ETH
+      ],
+      id: 1,
+    }),
+  })
+}
+
 ;(async () => {
   await checkRpcStatus()
+  await setPaymasterUtilityBalance()
 })()

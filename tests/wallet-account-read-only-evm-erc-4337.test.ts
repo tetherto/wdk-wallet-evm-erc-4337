@@ -14,9 +14,11 @@ import {
   encodeFunctionData,
   erc20Abi,
   getContract,
+  Hex,
   http,
   parseEther,
   toHex,
+  zeroAddress,
 } from 'viem'
 import { base } from 'viem/chains'
 import { waitForTransactionReceipt } from 'viem/actions'
@@ -49,7 +51,7 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({
   })
   const snapshot = await publicClient.takeSnapshot()
 
-  const [executor, owner] = getSigners()
+  const [executor, owner, tester] = getSigners()
   const altoInstance = alto({
     port: 4337,
     entrypoints: [entryPoint06Address, entryPoint07Address, entryPoint08Address],
@@ -136,11 +138,11 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({
   })
 
   describe('quoteSendTransaction', async ({ test }) => {
-    const recipient = privateKeyToAccount(generatePrivateKey())
+    const RECIPIENT = privateKeyToAccount(generatePrivateKey())
 
     test('should successfully quote a transaction', async ({ expect }) => {
       const TRANSACTION = {
-        to: recipient.address,
+        to: RECIPIENT.address,
         value: 0,
         data: '0x',
       }
@@ -163,6 +165,109 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({
       const { fee } = await account.quoteSendTransaction(TRANSACTION_WITH_DATA)
 
       expect(fee > 0n).to.be(true)
+    })
+  })
+
+  describe('quoteTransfer', async ({ test }) => {
+    const RECIPIENT = privateKeyToAccount(generatePrivateKey())
+
+    test('should successfully quote a transfer operation', async ({ expect }) => {
+      const TRANSFER = {
+        token: erc20Address,
+        recipient: RECIPIENT.address,
+        amount: 100,
+      }
+
+      const { fee } = await account.quoteTransfer(TRANSFER)
+
+      expect(fee > 0n).to.be(true)
+    })
+  })
+
+  describe('getTransactionReceipt', async ({ test }) => {
+    const pimlicoClient = createPimlicoClient({
+      chain: base,
+      transport: http(paymasterRpc),
+    })
+
+    const smartAccount = await toSafeSmartAccount({
+      client: publicClient,
+      entryPoint: {
+        address: entryPoint07Address,
+        version: '0.7',
+      },
+      owners: [tester],
+      version: '1.4.1',
+      threshold: 1n,
+      saltNonce: BigInt(SALT_NONCE),
+    })
+
+    await sudoMintTokens({
+      amount: INITIAL_TOKEN_BALANCE,
+      to: smartAccount.address,
+      anvilRpc: HARDHAT_PROVIDER,
+    })
+
+    const smartAccountClient = createSmartAccountClient({
+      account: smartAccount,
+      bundlerTransport: http(altoRpc),
+      paymaster: pimlicoClient,
+      userOperation: {
+        estimateFeesPerGas: async () => {
+          const { fast } = await pimlicoClient.getUserOperationGasPrice()
+          return fast
+        },
+      },
+    })
+
+    test('should return the correct transaction receipt', async ({ expect }) => {
+      const TRANSACTION = {
+        to: zeroAddress,
+        value: 0n,
+        data: '0x' as Hex,
+      }
+
+      const userOpHash = await smartAccountClient.sendUserOperation({
+        calls: [TRANSACTION],
+      })
+
+      const expected = await smartAccountClient.waitForUserOperationReceipt({
+        hash: userOpHash,
+        timeout: 0,
+      })
+
+      const receipt = await account.getTransactionReceipt(userOpHash)
+
+      expect(receipt?.hash).to.equal(expected.receipt.transactionHash)
+      expect(receipt?.to).to.equal(entryPoint07Address)
+      expect(receipt?.status).to.equal(1)
+    })
+
+    test('should return the correct erc20 transaction receipt', async ({ expect }) => {
+      const TRANSACTION_WITH_DATA = {
+        to: erc20Address,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [paymasterAddress],
+        }),
+      }
+
+      const userOpHash = await smartAccountClient.sendUserOperation({
+        calls: [TRANSACTION_WITH_DATA],
+      })
+
+      const expected = await smartAccountClient.waitForUserOperationReceipt({
+        hash: userOpHash,
+        timeout: 0,
+      })
+
+      const receipt = await account.getTransactionReceipt(userOpHash)
+
+      expect(receipt?.hash).to.equal(expected.receipt.transactionHash)
+      expect(receipt?.to).to.equal(entryPoint07Address)
+      expect(receipt?.status).to.equal(1)
     })
   })
 })

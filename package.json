@@ -23,7 +23,7 @@
     "lint": "standard",
     "lint:fix": "standard --fix",
     "test": "noba --register tsx tests/*.test.ts",
-    "test:node": "concurrently --names RPC,NODE -c cyan,yellow --hide RPC --kill-others --success=command-NODE 'hardhat node --network base' 'noba --timeout 60000 --register tsx --globalSetup tests/globalSetup.ts tests/*.test.ts'"
+    "test:node": "concurrently --names RPC,NODE -c cyan,yellow --hide RPC --success=command-NODE --kill-others 'hardhat node --network base' 'noba --timeout 60000 --register tsx --globalSetup tests/globalSetup.ts tests/wallet-account-evm-erc-4337.test.ts'"
   },
   "dependencies": {
     "@tetherto/wdk-wallet": "^1.0.0-beta.1",
@@ -36,9 +36,10 @@
     "@nomicfoundation/hardhat-network-helpers": "^3.0.1",
     "@pimlico/alto": "0.0.19",
     "@pimlico/mock-paymaster": "0.0.5",
+    "bip39": "3.1.0",
     "concurrently": "9.2.1",
     "hardhat": "3.0.9",
-    "noba": "1.6.1-next.2",
+    "noba": "1.6.4-next.1",
     "permissionless": "0.2.57",
     "prool": "0.0.24",
     "standard": "17.1.2",

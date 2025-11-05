@@ -8,20 +8,8 @@ import {
 } from './globalConfig'
 
 import { WalletAccountReadOnlyEvmErc4337 } from '@tetherto/wdk-wallet-evm-erc-4337'
-import {
-  Address,
-  createWalletClient,
-  encodeFunctionData,
-  erc20Abi,
-  getContract,
-  Hex,
-  http,
-  parseEther,
-  toHex,
-  zeroAddress,
-} from 'viem'
+import { Address, encodeFunctionData, erc20Abi, Hex, http, toHex, zeroAddress } from 'viem'
 import { base } from 'viem/chains'
-import { waitForTransactionReceipt } from 'viem/actions'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { alto } from 'prool/instances'
 import {
@@ -34,15 +22,9 @@ import { createPimlicoClient } from 'permissionless/clients/pimlico'
 import { toSafeSmartAccount } from 'permissionless/accounts'
 import { createSmartAccountClient } from 'permissionless'
 
-const INITIAL_TOKEN_BALANCE = parseEther('1')
+const INITIAL_TOKEN_BALANCE = 1_000_000_000n
 
-describe('WalletAccountReadOnlyEvmErc4337', async ({
-  describe,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-}) => {
+describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterAll }) => {
   let account: WalletAccountReadOnlyEvmErc4337
 
   const publicClient = createExtendedPublicClient({
@@ -89,10 +71,10 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({
       paymasterToken: { address: erc20Address },
     })
 
-    const smartAccountAddress = (await account.getAddress()) as `0x${string}`
+    const smartAccountAddress = await account.getAddress()
     await sudoMintTokens({
       amount: INITIAL_TOKEN_BALANCE,
-      to: smartAccountAddress,
+      to: smartAccountAddress as Address,
       anvilRpc: HARDHAT_PROVIDER,
     })
   })
@@ -108,7 +90,7 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({
     test('should return the correct balance of the account', async ({ expect }) => {
       const balance = await account.getBalance()
 
-      expect(balance).to.equal(parseEther('0'))
+      expect(balance).to.equal(0n)
     })
 
     test('should throw if the account is not connected to a provider', async ({ expect }) => {
@@ -133,7 +115,7 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({
     test('should return the correct balance of the paymaster', async ({ expect }) => {
       const balance = await account.getPaymasterTokenBalance()
 
-      expect(balance).to.equal(1000000000000000000n)
+      expect(balance).to.equal(INITIAL_TOKEN_BALANCE)
     })
   })
 

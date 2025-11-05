@@ -4,7 +4,8 @@ import { HARDHAT_PROVIDER } from './globalConfig'
 const sleep = async (ms = 1000) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const checkRpcStatus = async (count = 0) => {
-  if (count > 10) throw new Error('Cannot setup the localnet probably after 10s')
+  const limit = 20
+  if (count > limit) throw new Error(`Cannot setup the localnet probably after ${limit}s`)
 
   try {
     await sleep()

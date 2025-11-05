@@ -22,8 +22,7 @@
     "build:types": "tsc",
     "lint": "standard",
     "lint:fix": "standard --fix",
-    "test": "noba --register tsx tests/*.test.ts",
-    "test:node": "concurrently --names RPC,NODE -c cyan,yellow --hide RPC --success=command-NODE --kill-others 'hardhat node --network base' 'noba --timeout 60000 --register tsx --globalSetup tests/globalSetup.ts tests/wallet-account-evm-erc-4337.test.ts'"
+    "test:node": "concurrently --names RPC,NODE -c cyan,yellow --hide RPC --success=command-NODE --kill-others 'hardhat node --network base' 'noba --timeout 60000 --register tsx --globalSetup tests/globalSetup.ts tests/*.test.ts'"
   },
   "dependencies": {
     "@tetherto/wdk-wallet": "^1.0.0-beta.1",
@@ -39,7 +38,7 @@
     "bip39": "3.1.0",
     "concurrently": "9.2.1",
     "hardhat": "3.0.9",
-    "noba": "1.6.4-next.1",
+    "noba": "1.6.4",
     "permissionless": "0.2.57",
     "prool": "0.0.24",
     "standard": "17.1.2",

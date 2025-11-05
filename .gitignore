@@ -5,3 +5,6 @@ coverage
 # Hardhat
 /cache
 /artifacts
+
+# Build
+/dist

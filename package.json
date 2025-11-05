@@ -22,7 +22,9 @@
     "build:types": "tsc",
     "lint": "standard",
     "lint:fix": "standard --fix",
-    "test:node": "concurrently --names RPC,NODE -c cyan,yellow --hide RPC --success=command-NODE --kill-others 'hardhat node --network base' 'noba --timeout 60000 --register tsx --globalSetup tests/globalSetup.ts tests/*.test.ts'"
+    "rpc": "hardhat node --network base",
+    "pretest": "tsup-node tests --clean --silent --format esm --out-dir dist/tests",
+    "test:node": "npm run pretest && concurrently --names RPC,NODE -c cyan,yellow --hide RPC --success=command-NODE --kill-others 'npm run rpc' 'noba --timeout 60000 --globalSetup dist/tests/globalSetup.js dist/tests/*.test.js'"
   },
   "dependencies": {
     "@tetherto/wdk-wallet": "^1.0.0-beta.1",
@@ -42,7 +44,7 @@
     "permissionless": "0.2.57",
     "prool": "0.0.24",
     "standard": "17.1.2",
-    "tsx": "4.20.6",
+    "tsup": "8.5.0",
     "typescript": "5.8.3",
     "viem": "2.38.4"
   },

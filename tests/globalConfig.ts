@@ -1,12 +1,21 @@
+import { detectRuntime } from 'noba'
 import hardhatConfig from '../hardhat.config'
+import type { Hex } from 'viem'
 
-import { createPublicClient, Hex, http, zeroAddress } from 'viem'
-import { mnemonicToAccount } from 'viem/accounts'
-import { createPaymasterClient, entryPoint07Address } from 'viem/account-abstraction'
-import { hardhat } from 'viem/chains'
+const runtime = detectRuntime()
+
+// @ts-ignore
+if (runtime === 'bare') await import('bare-node-runtime/global')
 
 export const shims: Partial<{ imports: string }> =
-  'Bare' in global ? { imports: 'bare-wdk-runtime/package' } : {}
+  runtime === 'bare' ? { imports: 'bare-node-runtime/imports' } : {}
+
+const { createPublicClient, http, zeroAddress } = await import('viem', { with: shims })
+const { mnemonicToAccount } = await import('viem/accounts', { with: shims })
+const { createPaymasterClient, entryPoint07Address } = await import('viem/account-abstraction', {
+  with: shims,
+})
+const { base } = await import('viem/chains', { with: shims })
 
 export const HARDHAT_PROVIDER = 'http://localhost:8545'
 
@@ -32,7 +41,7 @@ export const getPaymasterAddress = async (paymasterRpc: string) => {
     maxFeePerGas: 0n,
     maxPriorityFeePerGas: 0n,
     nonce: 0n,
-    chainId: hardhat.id,
+    chainId: base.id,
     entryPointAddress: entryPoint07Address,
   })
 

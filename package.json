@@ -26,13 +26,13 @@
     "test": "concurrently --names RPC,TEST -c cyan,yellow --hide RPC --success command-TEST --kill-others 'npm run rpc' 'noba --register tsx -t 60000 --globalSetup tests/globalSetup.ts tests/*.test.ts'",
     "build:test": "tsup-node tests --clean --silent --format esm --out-dir dist/tests",
     "test:node": "npm run build:test && concurrently --names RPC,TEST -p none --hide RPC --success command-TEST --kill-others 'npm run rpc' 'noba -t 60000 --globalSetup dist/tests/globalSetup.js dist/tests/*.test.js'",
-    "test:bare": "npm run build:test && concurrently --names RPC,TEST -p none --hide RPC --success command-TEST --kill-others 'npm run rpc' 'noba-bare -t 60000 --globalSetup dist/tests/globalSetup.js dist/tests/*.test.js'"
+    "test:bare": "npm run build:test && concurrently --names RPC,TEST -p none --hide RPC --success command-TEST --kill-others 'npm run rpc' 'noba-bare -t 60000 --globalSetup dist/tests/globalSetup.js dist/tests/wallet-account-evm-erc-4337.test.js'"
   },
   "dependencies": {
     "@tetherto/wdk-wallet": "^1.0.0-beta.1",
     "@tetherto/wdk-wallet-evm": "^1.0.0-beta.3",
     "@wdk-safe-global/relay-kit": "4.1.3",
-    "bare-node-runtime": "1.0.3",
+    "bare-node-runtime": "1.1.4",
     "ethers": "6.14.4"
   },
   "devDependencies": {

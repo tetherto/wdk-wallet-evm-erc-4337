@@ -4,27 +4,30 @@ import {
   getPaymasterAddress,
   getSigners,
   HARDHAT_PROVIDER,
+  shims,
 } from './globalConfig'
 import hardhatConfig from '../hardhat.config'
-
+import type { ApproveOptions, TransferOptions } from '@tetherto/wdk-wallet-evm'
+import type { Address, Hex } from 'viem'
 import {
   WalletAccountEvmErc4337,
   WalletAccountReadOnlyEvmErc4337,
 } from '@tetherto/wdk-wallet-evm-erc-4337'
-import { Address, encodeFunctionData, erc20Abi, Hex, http, toHex } from 'viem'
-import { base } from 'viem/chains'
-import { alto } from 'prool/instances'
-import {
-  entryPoint06Address,
-  entryPoint07Address,
-  entryPoint08Address,
-} from 'viem/account-abstraction'
-import { erc20Address, paymaster, sudoMintTokens } from '@pimlico/mock-paymaster'
-import { mnemonicToSeedSync } from 'bip39'
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { createSmartAccountClient } from 'permissionless'
-import { createPimlicoClient } from 'permissionless/clients/pimlico'
-import type { ApproveOptions, TransferOptions } from '@tetherto/wdk-wallet-evm'
+
+const { encodeFunctionData, erc20Abi, http, toHex } = await import('viem', { with: shims })
+const { base } = await import('viem/chains', { with: shims })
+const { alto } = await import('prool/instances', { with: shims })
+const { entryPoint06Address, entryPoint07Address, entryPoint08Address } = await import(
+  'viem/account-abstraction',
+  { with: shims }
+)
+const { erc20Address, paymaster, sudoMintTokens } = await import('@pimlico/mock-paymaster', {
+  with: shims,
+})
+const { mnemonicToSeedSync } = await import('bip39', { with: shims })
+const { generatePrivateKey, privateKeyToAccount } = await import('viem/accounts', { with: shims })
+const { createSmartAccountClient } = await import('permissionless', { with: shims })
+const { createPimlicoClient } = await import('permissionless/clients/pimlico', { with: shims })
 
 const INITIAL_TOKEN_BALANCE = 1_000_000_000n
 
@@ -37,7 +40,7 @@ describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
   })
   const snapshot = await publicClient.takeSnapshot()
 
-  const [executor, owner] = getSigners()
+  const [executor] = getSigners()
   const altoInstance = alto({
     port: 4337,
     entrypoints: [entryPoint06Address, entryPoint07Address, entryPoint08Address],

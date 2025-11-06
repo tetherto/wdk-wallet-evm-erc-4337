@@ -1,10 +1,6 @@
 {
-  "include": [
-    "index.js",
-    "src/**/*.js",
-  ],
   "compilerOptions": {
-    "target": "ES2015",
+    "target": "esnext",
     "module": "NodeNext",
     "moduleResolution": "nodenext",
     "allowJs": true,
@@ -13,5 +9,6 @@
     "skipLibCheck": true,
     "stripInternal": true,
     "outDir": "./types"
-  }
+  },
+  "include": ["index.js", "src/**/*.js"]
 }

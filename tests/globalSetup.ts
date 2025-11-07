@@ -1,14 +1,15 @@
-import { setTimeout } from 'timers/promises'
 import { HARDHAT_PROVIDER, shims } from './globalConfig'
 
 const { privateKeyToAccount } = await import('viem/accounts', { with: shims })
+
+const sleep = async (ms = 1000) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const checkRpcStatus = async (count = 0) => {
   const limit = 20
   if (count > limit) throw new Error(`Cannot setup the localnet probably after ${limit}s`)
 
   try {
-    await setTimeout(1000)
+    await sleep()
     const res = await fetch(HARDHAT_PROVIDER, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

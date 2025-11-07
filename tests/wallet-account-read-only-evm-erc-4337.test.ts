@@ -4,7 +4,6 @@ import {
   createExtendedPublicClient,
   getPaymasterAddress,
   getSigners,
-  SALT_NONCE,
 } from './globalConfig'
 
 import { WalletAccountReadOnlyEvmErc4337 } from '@tetherto/wdk-wallet-evm-erc-4337'
@@ -181,7 +180,6 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
       owners: [tester],
       version: '1.4.1',
       threshold: 1n,
-      saltNonce: BigInt(SALT_NONCE),
     })
 
     await sudoMintTokens({

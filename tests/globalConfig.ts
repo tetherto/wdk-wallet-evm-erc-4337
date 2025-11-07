@@ -7,8 +7,8 @@ const runtime = detectRuntime()
 // @ts-ignore
 if (runtime === 'bare') await import('bare-node-runtime/global')
 
-export const shims: Partial<{ imports: string }> =
-  runtime === 'bare' ? { imports: 'bare-node-runtime/imports' } : {}
+export const shims: ImportAttributes =
+  runtime === 'bare' ? { imports: '@tetherto/wdk-wallet-evm-erc-4337/polyfills/imports' } : {}
 
 const { createPublicClient, http, zeroAddress } = await import('viem', { with: shims })
 const { mnemonicToAccount } = await import('viem/accounts', { with: shims })
@@ -18,8 +18,6 @@ const { createPaymasterClient, entryPoint07Address } = await import('viem/accoun
 const { base } = await import('viem/chains', { with: shims })
 
 export const HARDHAT_PROVIDER = 'http://localhost:8545'
-
-export const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
 
 export const getSigners = (numberOfAccounts = 3) => {
   return Array.from({ length: numberOfAccounts }).map((_, i) => {

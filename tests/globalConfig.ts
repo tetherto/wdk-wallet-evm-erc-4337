@@ -1,6 +1,5 @@
 import { detectRuntime } from 'noba'
-import hardhatConfig from '../hardhat.config'
-import type { Hex } from 'viem'
+import { type Address, type Hex } from 'viem'
 
 const runtime = detectRuntime()
 
@@ -8,47 +7,52 @@ const runtime = detectRuntime()
 if (runtime === 'bare') await import('bare-node-runtime/global')
 
 export const shims: ImportAttributes =
-  runtime === 'bare' ? { imports: '@tetherto/wdk-wallet-evm-erc-4337/polyfills/imports' } : {}
+  runtime === 'bare' ? { imports: 'bare-node-runtime/imports' } : {}
 
-const { createPublicClient, http, zeroAddress } = await import('viem', { with: shims })
+const { toHex, createPublicClient } = await import('viem', { with: shims })
 const { mnemonicToAccount } = await import('viem/accounts', { with: shims })
-const { createPaymasterClient, entryPoint07Address } = await import('viem/account-abstraction', {
-  with: shims,
-})
-const { base } = await import('viem/chains', { with: shims })
 
 export const HARDHAT_PROVIDER = 'http://localhost:8545'
+export const MNEMONIC =
+  'anger burst story spy face pattern whale quit delay fiction ball solve'
+export const PATH: `m/44'/60'/${string}` = "m/44'/60'/0'/0"
 
 export const getSigners = (numberOfAccounts = 3) => {
   return Array.from({ length: numberOfAccounts }).map((_, i) => {
-    const { path, mnemonic } = hardhatConfig.networks.base.accounts
-    return mnemonicToAccount(mnemonic, {
-      path: `${path as `m/44'/60'/${string}`}/${i}`,
+    return mnemonicToAccount(MNEMONIC, {
+      path: `${PATH}/${i}`,
     })
   })
 }
 
-export const getPaymasterAddress = async (paymasterRpc: string) => {
-  const client = createPaymasterClient({
-    transport: http(paymasterRpc),
-  })
-
-  const { paymaster } = await client.getPaymasterData({
-    callData: '0x',
-    sender: zeroAddress,
-    maxFeePerGas: 0n,
-    maxPriorityFeePerGas: 0n,
-    nonce: 0n,
-    chainId: base.id,
-    entryPointAddress: entryPoint07Address,
-  })
-
-  if (!paymaster) throw new Error('Cannot get the paymaster address')
-
-  return paymaster
+export const initPaymaster = async (): Promise<{
+  altoRpc: string
+  paymasterRpc: string
+  erc20Address: Address
+  paymasterAddress: Address
+  stopPaymaster: () => Promise<void>
+  sudoMintTokens: (amount: bigint, to: Address) => Promise<void>
+}> => {
+  const res = await fetch('http://localhost:4545/start')
+  const body = await res.json()
+  return {
+    ...body,
+    stopPaymaster: () => fetch('http://localhost:4545/stop'),
+    sudoMintTokens: async (amount: bigint, to: Address) => {
+      const res = await fetch('http://localhost:4545/sudo-mint-tokens', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ amount: toHex(amount), to }),
+      })
+    },
+  }
 }
 
-export const createExtendedPublicClient = (...params: Parameters<typeof createPublicClient>) => {
+export const createExtendedPublicClient = (
+  ...params: Parameters<typeof createPublicClient>
+) => {
   return createPublicClient(...params).extend((client) => ({
     async takeSnapshot() {
       const snapshotId = await client.request<{

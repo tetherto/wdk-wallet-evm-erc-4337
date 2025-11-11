@@ -20,13 +20,13 @@
   "types": "./types",
   "scripts": {
     "build:types": "tsc",
+    "build:test": "tsup-node tests --clean --silent --format esm --out-dir dist/tests",
     "lint": "standard",
     "lint:fix": "standard --fix",
-    "rpc": "hardhat node --network base",
+    "rpc": "concurrently 'hardhat paymaster --port 4545' 'hardhat node --network base'",
     "test": "concurrently --names RPC,TEST -c cyan,yellow --hide RPC --success command-TEST --kill-others 'npm run rpc' 'noba --register tsx -t 60000 --globalSetup tests/globalSetup.ts tests/*.test.ts'",
-    "build:test": "tsup-node tests --clean --silent --format esm --out-dir dist/tests",
     "test:node": "npm run build:test && concurrently --names RPC,TEST -p none --hide RPC --success command-TEST --kill-others 'npm run rpc' 'noba -t 60000 --globalSetup dist/tests/globalSetup.js dist/tests/*.test.js'",
-    "test:bare": "npm run build:test && concurrently --names RPC,TEST -p none --hide RPC --success command-TEST --kill-others 'npm run rpc' 'noba-bare -t 60000 --globalSetup dist/tests/globalSetup.js dist/tests/wallet-account-evm-erc-4337.test.js'"
+    "test:bare": "npm run build:test && concurrently --names RPC,TEST -p none --hide RPC --success command-TEST --kill-others 'npm run rpc' 'noba-bare -t 60000 --globalSetup dist/tests/globalSetup.js dist/tests/*.test.js'"
   },
   "dependencies": {
     "@tetherto/wdk-wallet": "^1.0.0-beta.1",
@@ -36,15 +36,16 @@
     "ethers": "6.14.4"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-network-helpers": "^3.0.1",
     "@pimlico/alto": "0.0.19",
     "@pimlico/mock-paymaster": "0.0.5",
     "bip39": "3.1.0",
     "concurrently": "9.2.1",
+    "fastify": "5.6.2",
+    "get-port": "7.1.0",
     "hardhat": "3.0.9",
     "noba": "1.6.4",
     "permissionless": "0.2.57",
-    "prool": "0.0.24",
+    "prool": "0.0.25",
     "standard": "17.1.2",
     "tsup": "8.5.0",
     "tsx": "4.20.6",
@@ -65,9 +66,6 @@
     },
     "./package": {
       "default": "./package.json"
-    },
-    "./polyfills/*": {
-      "default": "./polyfills/*.js"
     }
   },
   "publishConfig": {

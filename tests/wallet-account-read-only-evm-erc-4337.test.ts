@@ -2,28 +2,42 @@ import { describe } from 'noba'
 import {
   HARDHAT_PROVIDER,
   createExtendedPublicClient,
-  getPaymasterAddress,
   getSigners,
+  initPaymaster,
+  shims,
 } from './globalConfig'
-
+import type { Address, Hex } from 'viem'
 import { WalletAccountReadOnlyEvmErc4337 } from '@tetherto/wdk-wallet-evm-erc-4337'
-import { Address, encodeFunctionData, erc20Abi, Hex, http, toHex, zeroAddress } from 'viem'
-import { base } from 'viem/chains'
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { alto } from 'prool/instances'
-import {
-  entryPoint06Address,
-  entryPoint07Address,
-  entryPoint08Address,
-} from 'viem/account-abstraction'
-import { erc20Address, paymaster, sudoMintTokens } from '@pimlico/mock-paymaster'
-import { createPimlicoClient } from 'permissionless/clients/pimlico'
-import { toSafeSmartAccount } from 'permissionless/accounts'
-import { createSmartAccountClient } from 'permissionless'
+
+const { encodeFunctionData, erc20Abi, http, zeroAddress } = await import(
+  'viem',
+  { with: shims }
+)
+const { base } = await import('viem/chains', { with: shims })
+const { generatePrivateKey, privateKeyToAccount } = await import(
+  'viem/accounts',
+  { with: shims }
+)
+const { entryPoint07Address } = await import('viem/account-abstraction', {
+  with: shims,
+})
+const { createPimlicoClient } = await import('permissionless/clients/pimlico', {
+  with: shims,
+})
+const { toSafeSmartAccount } = await import('permissionless/accounts', {
+  with: shims,
+})
+const { createSmartAccountClient } = await import('permissionless', {
+  with: shims,
+})
 
 const INITIAL_TOKEN_BALANCE = 1_000_000_000n
 
-describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterAll }) => {
+describe('WalletAccountReadOnlyEvmErc4337', async ({
+  describe,
+  beforeAll,
+  afterAll,
+}) => {
   let account: WalletAccountReadOnlyEvmErc4337
 
   const publicClient = createExtendedPublicClient({
@@ -33,32 +47,16 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
   const snapshot = await publicClient.takeSnapshot()
 
   const [executor, owner, tester] = getSigners()
-  const altoInstance = alto({
-    port: 4337,
-    entrypoints: [entryPoint06Address, entryPoint07Address, entryPoint08Address],
-    rpcUrl: HARDHAT_PROVIDER,
-    executorPrivateKeys: [toHex(executor.getHdKey().privateKey!)],
-    utilityPrivateKey: toHex(executor.getHdKey().privateKey!),
-    safeMode: false,
-  })
-  const altoRpc = `http://${altoInstance.host}:${altoInstance.port}`
-
-  let paymasterAddress: Address
-  const paymasterInstance = paymaster({
-    port: 3000,
-    anvilRpc: HARDHAT_PROVIDER,
+  const {
     altoRpc,
-  })
-  // `?pimlico=true` tricks 3rd parties to detect this being pimlico url
-  // https://www.npmjs.com/package/@wdk-safe-global/relay-kit?activeTab=code#:~:text=getTokenExchangeRate
-  const paymasterRpc = `http://${paymasterInstance.host}:${paymasterInstance.port}?pimlico=true`
+    paymasterRpc,
+    paymasterAddress,
+    erc20Address,
+    stopPaymaster,
+    sudoMintTokens,
+  } = await initPaymaster()
 
   beforeAll(async () => {
-    await altoInstance.start()
-    await paymasterInstance.start()
-
-    paymasterAddress = await getPaymasterAddress(paymasterRpc)
-
     account = new WalletAccountReadOnlyEvmErc4337(owner.address, {
       chainId: base.id,
       provider: HARDHAT_PROVIDER,
@@ -71,28 +69,26 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
     })
 
     const smartAccountAddress = await account.getAddress()
-    await sudoMintTokens({
-      amount: INITIAL_TOKEN_BALANCE,
-      to: smartAccountAddress as Address,
-      anvilRpc: HARDHAT_PROVIDER,
-    })
+    await sudoMintTokens(INITIAL_TOKEN_BALANCE, smartAccountAddress as Address)
   })
 
   afterAll(async () => {
-    await paymasterInstance.stop()
-    await altoInstance.stop()
-
+    await stopPaymaster()
     await publicClient.restore(snapshot)
   })
 
   describe('getBalance', async ({ test }) => {
-    test('should return the correct balance of the account', async ({ expect }) => {
+    test('should return the correct balance of the account', async ({
+      expect,
+    }) => {
       const balance = await account.getBalance()
 
       expect(balance).to.equal(0n)
     })
 
-    test('should throw if the account is not connected to a provider', async ({ expect }) => {
+    test('should throw if the account is not connected to a provider', async ({
+      expect,
+    }) => {
       const account = new WalletAccountReadOnlyEvmErc4337(owner.address, {
         chainId: base.id,
         provider: '',
@@ -111,7 +107,9 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
   })
 
   describe('getPaymasterBalance', async ({ test }) => {
-    test('should return the correct balance of the paymaster', async ({ expect }) => {
+    test('should return the correct balance of the paymaster', async ({
+      expect,
+    }) => {
       const balance = await account.getPaymasterTokenBalance()
 
       expect(balance).to.equal(INITIAL_TOKEN_BALANCE)
@@ -132,7 +130,9 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
       expect(fee > 0n).to.be(true)
     })
 
-    test('should successfully quote a transaction with arbitrary data', async ({ expect }) => {
+    test('should successfully quote a transaction with arbitrary data', async ({
+      expect,
+    }) => {
       const TRANSACTION_WITH_DATA = {
         to: erc20Address,
         value: 0,
@@ -152,7 +152,9 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
   describe('quoteTransfer', async ({ test }) => {
     const RECIPIENT = privateKeyToAccount(generatePrivateKey())
 
-    test('should successfully quote a transfer operation', async ({ expect }) => {
+    test('should successfully quote a transfer operation', async ({
+      expect,
+    }) => {
       const TRANSFER = {
         token: erc20Address,
         recipient: RECIPIENT.address,
@@ -182,11 +184,7 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
       threshold: 1n,
     })
 
-    await sudoMintTokens({
-      amount: INITIAL_TOKEN_BALANCE,
-      to: smartAccount.address,
-      anvilRpc: HARDHAT_PROVIDER,
-    })
+    await sudoMintTokens(INITIAL_TOKEN_BALANCE, smartAccount.address)
 
     const smartAccountClient = createSmartAccountClient({
       account: smartAccount,
@@ -200,7 +198,9 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
       },
     })
 
-    test('should return the correct transaction receipt', async ({ expect }) => {
+    test('should return the correct transaction receipt', async ({
+      expect,
+    }) => {
       const TRANSACTION = {
         to: zeroAddress,
         value: 0n,
@@ -223,7 +223,9 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({ describe, beforeAll, afterA
       expect(receipt?.status).to.equal(1)
     })
 
-    test('should return the correct erc20 transaction receipt', async ({ expect }) => {
+    test('should return the correct erc20 transaction receipt', async ({
+      expect,
+    }) => {
       const TRANSACTION_WITH_DATA = {
         to: erc20Address,
         value: 0n,

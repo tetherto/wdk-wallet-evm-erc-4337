@@ -1,12 +1,11 @@
 import { describe } from 'noba'
 import {
   createExtendedPublicClient,
-  getPaymasterAddress,
-  getSigners,
   HARDHAT_PROVIDER,
   shims,
+  initPaymaster,
+  MNEMONIC,
 } from './globalConfig'
-import hardhatConfig from '../hardhat.config'
 import type { ApproveOptions, TransferOptions } from '@tetherto/wdk-wallet-evm'
 import type { Address, Hex } from 'viem'
 import {
@@ -14,24 +13,32 @@ import {
   WalletAccountReadOnlyEvmErc4337,
 } from '@tetherto/wdk-wallet-evm-erc-4337'
 
-const { encodeFunctionData, erc20Abi, http, toHex } = await import('viem', { with: shims })
+const { encodeFunctionData, erc20Abi, http } = await import('viem', {
+  with: shims,
+})
 const { base } = await import('viem/chains', { with: shims })
-const { alto } = await import('prool/instances', { with: shims })
-const { entryPoint06Address, entryPoint07Address, entryPoint08Address } = await import(
-  'viem/account-abstraction',
-  { with: shims }
-)
-const { erc20Address, paymaster, sudoMintTokens } = await import('@pimlico/mock-paymaster', {
+const { entryPoint07Address } = await import('viem/account-abstraction', {
   with: shims,
 })
 const { mnemonicToSeedSync } = await import('bip39', { with: shims })
-const { generatePrivateKey, privateKeyToAccount } = await import('viem/accounts', { with: shims })
-const { createSmartAccountClient } = await import('permissionless', { with: shims })
-const { createPimlicoClient } = await import('permissionless/clients/pimlico', { with: shims })
+const { generatePrivateKey, privateKeyToAccount } = await import(
+  'viem/accounts',
+  { with: shims }
+)
+const { createSmartAccountClient } = await import('permissionless', {
+  with: shims,
+})
+const { createPimlicoClient } = await import('permissionless/clients/pimlico', {
+  with: shims,
+})
 
 const INITIAL_TOKEN_BALANCE = 1_000_000_000n
 
-describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) => {
+describe('WalletAccountEvmErc4337', async ({
+  describe,
+  beforeAll,
+  afterAll,
+}) => {
   let account: WalletAccountEvmErc4337
 
   const publicClient = createExtendedPublicClient({
@@ -40,26 +47,14 @@ describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
   })
   const snapshot = await publicClient.takeSnapshot()
 
-  const [executor] = getSigners()
-  const altoInstance = alto({
-    port: 4337,
-    entrypoints: [entryPoint06Address, entryPoint07Address, entryPoint08Address],
-    rpcUrl: HARDHAT_PROVIDER,
-    executorPrivateKeys: [toHex(executor.getHdKey().privateKey!)],
-    utilityPrivateKey: toHex(executor.getHdKey().privateKey!),
-    safeMode: false,
-  })
-  const altoRpc = `http://${altoInstance.host}:${altoInstance.port}`
-
-  let paymasterAddress: Address
-  const paymasterInstance = paymaster({
-    port: 3000,
-    anvilRpc: HARDHAT_PROVIDER,
+  const {
     altoRpc,
-  })
-  // `?pimlico=true` tricks 3rd parties to detect this being pimlico url
-  // https://www.npmjs.com/package/@wdk-safe-global/relay-kit?activeTab=code#:~:text=getTokenExchangeRate
-  const paymasterRpc = `http://${paymasterInstance.host}:${paymasterInstance.port}?pimlico=true`
+    paymasterRpc,
+    paymasterAddress,
+    erc20Address,
+    stopPaymaster,
+    sudoMintTokens,
+  } = await initPaymaster()
 
   const smartAccountClient = createSmartAccountClient({
     bundlerTransport: http(altoRpc),
@@ -70,12 +65,7 @@ describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
   })
 
   beforeAll(async () => {
-    await altoInstance.start()
-    await paymasterInstance.start()
-
-    paymasterAddress = await getPaymasterAddress(paymasterRpc)
-
-    account = new WalletAccountEvmErc4337(hardhatConfig.networks.base.accounts.mnemonic, "0'/0/1", {
+    account = new WalletAccountEvmErc4337(MNEMONIC, "0'/0/1", {
       chainId: base.id,
       provider: HARDHAT_PROVIDER,
       bundlerUrl: altoRpc,
@@ -87,17 +77,11 @@ describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
     })
 
     const smartAccountAddress = await account.getAddress()
-    await sudoMintTokens({
-      amount: INITIAL_TOKEN_BALANCE,
-      to: smartAccountAddress as Address,
-      anvilRpc: HARDHAT_PROVIDER,
-    })
+    await sudoMintTokens(INITIAL_TOKEN_BALANCE, smartAccountAddress as Address)
   })
 
   afterAll(async () => {
-    await paymasterInstance.stop()
-    await altoInstance.stop()
-
+    await stopPaymaster()
     await publicClient.restore(snapshot)
   })
 
@@ -105,7 +89,6 @@ describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
     const PATH = "0'/0/0"
     const INVALID_PATH = "a'/b/c"
 
-    const { mnemonic: MNEMONIC } = hardhatConfig.networks.base.accounts
     const INVALID_MNEMONIC = 'invalid mnemonic'
 
     const ACCOUNT = {
@@ -137,7 +120,11 @@ describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
     test('should successfully initialize an account for the given seed and path', async ({
       expect,
     }) => {
-      const account = new WalletAccountEvmErc4337(mnemonicToSeedSync(MNEMONIC), PATH, AA_CONFIG)
+      const account = new WalletAccountEvmErc4337(
+        mnemonicToSeedSync(MNEMONIC),
+        PATH,
+        AA_CONFIG,
+      )
 
       expect(account.index).to.equal(ACCOUNT.index)
 
@@ -180,8 +167,13 @@ describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
         expect(result).to.be(true)
       })
 
-      test('should return false for an invalid signature', async ({ expect }) => {
-        const result = await account.verify(UNEXPECTED_MESSAGE, EXPECTED_SIGNATURE)
+      test('should return false for an invalid signature', async ({
+        expect,
+      }) => {
+        const result = await account.verify(
+          UNEXPECTED_MESSAGE,
+          EXPECTED_SIGNATURE,
+        )
 
         expect(result).to.be.falsy()
       })
@@ -195,7 +187,9 @@ describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
   })
 
   describe('sendTransaction', async ({ test }) => {
-    test('should successfully send a user-op transaction', async ({ expect }) => {
+    test('should successfully send a user-op transaction', async ({
+      expect,
+    }) => {
       const TRANSACTION_WITH_DATA = {
         to: erc20Address,
         value: 0n,
@@ -218,11 +212,15 @@ describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
 
       expect(hash).to.equal(expected.userOpHash)
       expect(receipt?.hash).to.equal(expected.receipt.transactionHash)
-      expect(receipt?.to?.toLowerCase()).to.equal(expected.entryPoint.toLowerCase())
+      expect(receipt?.to?.toLowerCase()).to.equal(
+        expected.entryPoint.toLowerCase(),
+      )
       expect(receipt?.status).to.equal(1)
     })
 
-    test('should throw cause the user-op transaction with bad data', async ({ expect }) => {
+    test('should throw cause the user-op transaction with bad data', async ({
+      expect,
+    }) => {
       const TRANSACTION_WITH_BAD_DATA = {
         to: erc20Address,
         value: 0n,
@@ -258,7 +256,9 @@ describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
 
       expect(hash).to.equal(expected.userOpHash)
       expect(receipt?.hash).to.equal(expected.receipt.transactionHash)
-      expect(receipt?.to?.toLowerCase()).to.equal(expected.entryPoint.toLowerCase())
+      expect(receipt?.to?.toLowerCase()).to.equal(
+        expected.entryPoint.toLowerCase(),
+      )
       expect(receipt?.status).to.equal(1)
 
       const balance = await publicClient.readContract({
@@ -295,7 +295,9 @@ describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
 
       expect(hash).to.equal(expected.userOpHash)
       expect(receipt?.hash).to.equal(expected.receipt.transactionHash)
-      expect(receipt?.to?.toLowerCase()).to.equal(expected.entryPoint.toLowerCase())
+      expect(receipt?.to?.toLowerCase()).to.equal(
+        expected.entryPoint.toLowerCase(),
+      )
       expect(receipt?.status).to.equal(1)
 
       const balance = await publicClient.readContract({
@@ -310,12 +312,16 @@ describe('WalletAccountEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
   })
 
   describe('toReadOnlyAccount', ({ test }) => {
-    test('should return a read-only copy of the account', async ({ expect }) => {
+    test('should return a read-only copy of the account', async ({
+      expect,
+    }) => {
       const readOnlyAccount = await account.toReadOnlyAccount()
 
       expect(readOnlyAccount).to.be.instanceOf(WalletAccountReadOnlyEvmErc4337)
 
-      expect(await readOnlyAccount.getAddress()).to.equal(await account.getAddress())
+      expect(await readOnlyAccount.getAddress()).to.equal(
+        await account.getAddress(),
+      )
     })
   })
 

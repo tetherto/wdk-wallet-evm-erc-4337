@@ -1,26 +1,33 @@
 import { describe } from 'noba'
 import {
   createExtendedPublicClient,
-  getPaymasterAddress,
   getSigners,
   HARDHAT_PROVIDER,
+  initPaymaster,
+  MNEMONIC,
+  shims,
 } from './globalConfig'
-import hardhatConfig from '../hardhat.config'
+import WalletManagerEvmErc4337, {
+  WalletAccountEvmErc4337,
+} from '@tetherto/wdk-wallet-evm-erc-4337'
 
-import WalletManagerEvmErc4337, { WalletAccountEvmErc4337 } from '@tetherto/wdk-wallet-evm-erc-4337'
-import { base } from 'viem/chains'
-import { Address, http, toHex } from 'viem'
-import { alto } from 'prool/instances'
-import {
-  entryPoint06Address,
-  entryPoint07Address,
-  entryPoint08Address,
-} from 'viem/account-abstraction'
-import { erc20Address, paymaster } from '@pimlico/mock-paymaster'
-import { createSmartAccountClient } from 'permissionless'
-import { createPimlicoClient } from 'permissionless/clients/pimlico'
+const { base } = await import('viem/chains', { with: shims })
+const { http } = await import('viem', { with: shims })
+const { entryPoint07Address } = await import('viem/account-abstraction', {
+  with: shims,
+})
+const { createSmartAccountClient } = await import('permissionless', {
+  with: shims,
+})
+const { createPimlicoClient } = await import('permissionless/clients/pimlico', {
+  with: shims,
+})
 
-describe('WalletManagerEvmErc4337', async ({ describe, beforeAll, afterAll }) => {
+describe('WalletManagerEvmErc4337', async ({
+  describe,
+  beforeAll,
+  afterAll,
+}) => {
   let wallet: WalletManagerEvmErc4337
 
   const publicClient = createExtendedPublicClient({
@@ -30,25 +37,13 @@ describe('WalletManagerEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
   const snapshot = await publicClient.takeSnapshot()
 
   const [executor, owner] = getSigners()
-  const altoInstance = alto({
-    port: 4337,
-    entrypoints: [entryPoint06Address, entryPoint07Address, entryPoint08Address],
-    rpcUrl: HARDHAT_PROVIDER,
-    executorPrivateKeys: [toHex(executor.getHdKey().privateKey!)],
-    utilityPrivateKey: toHex(executor.getHdKey().privateKey!),
-    safeMode: false,
-  })
-  const altoRpc = `http://${altoInstance.host}:${altoInstance.port}`
-
-  let paymasterAddress: Address
-  const paymasterInstance = paymaster({
-    port: 3000,
-    anvilRpc: HARDHAT_PROVIDER,
+  const {
     altoRpc,
-  })
-  // `?pimlico=true` tricks 3rd parties to detect this being pimlico url
-  // https://www.npmjs.com/package/@wdk-safe-global/relay-kit?activeTab=code#:~:text=getTokenExchangeRate
-  const paymasterRpc = `http://${paymasterInstance.host}:${paymasterInstance.port}?pimlico=true`
+    paymasterRpc,
+    paymasterAddress,
+    erc20Address,
+    stopPaymaster,
+  } = await initPaymaster()
 
   const smartAccountClient = createSmartAccountClient({
     bundlerTransport: http(altoRpc),
@@ -59,12 +54,7 @@ describe('WalletManagerEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
   })
 
   beforeAll(async () => {
-    await altoInstance.start()
-    await paymasterInstance.start()
-
-    paymasterAddress = await getPaymasterAddress(paymasterRpc)
-
-    wallet = new WalletManagerEvmErc4337(hardhatConfig.networks.base.accounts.mnemonic, {
+    wallet = new WalletManagerEvmErc4337(MNEMONIC, {
       chainId: base.id,
       provider: HARDHAT_PROVIDER,
       bundlerUrl: altoRpc,
@@ -77,14 +67,14 @@ describe('WalletManagerEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
   })
 
   afterAll(async () => {
-    await paymasterInstance.stop()
-    await altoInstance.stop()
-
+    await stopPaymaster()
     await publicClient.restore(snapshot)
   })
 
   describe('getAccountByPath', async ({ test }) => {
-    test('should return the account with the given path', async ({ expect }) => {
+    test('should return the account with the given path', async ({
+      expect,
+    }) => {
       const account = await wallet.getAccountByPath("1'/2/3")
 
       expect(account).to.be.instanceOf(WalletAccountEvmErc4337)
@@ -107,8 +97,10 @@ describe('WalletManagerEvmErc4337', async ({ describe, beforeAll, afterAll }) =>
       expect(feeRates.fast > feeRates.normal).to.be(true)
     })
 
-    test('should throw if the wallet is not connected to a provider', async ({ assert }) => {
-      const wallet = new WalletManagerEvmErc4337(hardhatConfig.networks.base.accounts.mnemonic, {
+    test('should throw if the wallet is not connected to a provider', async ({
+      assert,
+    }) => {
+      const wallet = new WalletManagerEvmErc4337(MNEMONIC, {
         chainId: base.id,
         provider: '',
         bundlerUrl: altoRpc,

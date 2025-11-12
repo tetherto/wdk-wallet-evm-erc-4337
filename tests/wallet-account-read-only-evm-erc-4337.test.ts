@@ -46,7 +46,7 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({
   })
   const snapshot = await publicClient.takeSnapshot()
 
-  const [executor, owner, tester] = getSigners()
+  const [owner, tester] = getSigners()
   const {
     altoRpc,
     paymasterRpc,

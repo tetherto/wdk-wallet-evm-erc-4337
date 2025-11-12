@@ -1,7 +1,6 @@
 import { describe } from 'noba'
 import {
   createExtendedPublicClient,
-  getSigners,
   HARDHAT_PROVIDER,
   initPaymaster,
   MNEMONIC,
@@ -11,15 +10,9 @@ import WalletManagerEvmErc4337, {
   WalletAccountEvmErc4337,
 } from '@tetherto/wdk-wallet-evm-erc-4337'
 
-const { base } = await import('viem/chains', { with: shims })
 const { http } = await import('viem', { with: shims })
+const { base } = await import('viem/chains', { with: shims })
 const { entryPoint07Address } = await import('viem/account-abstraction', {
-  with: shims,
-})
-const { createSmartAccountClient } = await import('permissionless', {
-  with: shims,
-})
-const { createPimlicoClient } = await import('permissionless/clients/pimlico', {
   with: shims,
 })
 
@@ -36,7 +29,6 @@ describe('WalletManagerEvmErc4337', async ({
   })
   const snapshot = await publicClient.takeSnapshot()
 
-  const [executor, owner] = getSigners()
   const {
     altoRpc,
     paymasterRpc,
@@ -44,14 +36,6 @@ describe('WalletManagerEvmErc4337', async ({
     erc20Address,
     stopPaymaster,
   } = await initPaymaster()
-
-  const smartAccountClient = createSmartAccountClient({
-    bundlerTransport: http(altoRpc),
-    paymaster: createPimlicoClient({
-      chain: base,
-      transport: http(paymasterRpc),
-    }),
-  })
 
   beforeAll(async () => {
     wallet = new WalletManagerEvmErc4337(MNEMONIC, {

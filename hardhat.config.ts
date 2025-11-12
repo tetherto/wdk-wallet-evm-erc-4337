@@ -48,6 +48,7 @@ const action = async ({ port }: { port: number }) => {
 
   app.get('/start', async () => {
     if (altoInstance) throw new Error('Alto already started')
+
     altoInstance = alto({
       port: await getPort(),
       entrypoints: [
@@ -63,6 +64,7 @@ const action = async ({ port }: { port: number }) => {
     const altoRpc = `http://${altoInstance.host}:${altoInstance.port}`
 
     if (paymasterInstance) throw new Error('Paymaster already started')
+
     paymasterInstance = paymaster({
       port: await getPort({ exclude: [altoInstance.port] }),
       anvilRpc: HARDHAT_PROVIDER,

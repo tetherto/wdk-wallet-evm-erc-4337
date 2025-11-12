@@ -1,6 +1,6 @@
 {
   "name": "@tetherto/wdk-wallet-evm-erc-4337",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0-beta.3",
   "description": "A simple package to manage BIP-32 wallets for evm blockchains, which implement the erc-4337 standard and its account abstraction features",
   "keywords": [
     "wdk",
@@ -32,7 +32,7 @@
     "@tetherto/wdk-wallet": "^1.0.0-beta.1",
     "@tetherto/wdk-wallet-evm": "^1.0.0-beta.3",
     "@wdk-safe-global/relay-kit": "4.1.3",
-    "bare-node-runtime": "1.1.4",
+    "bare-node-runtime": "^1.1.4",
     "ethers": "6.14.4"
   },
   "devDependencies": {

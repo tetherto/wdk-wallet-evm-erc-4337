@@ -182,13 +182,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
     const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
 
-    const { transactionHash } = await safe4337Pack.getUserOperationByHash(hash)
+    const userOp = await safe4337Pack.getUserOperationByHash(hash)
 
-    if (!transactionHash) {
+    if (!userOp || !userOp.transactionHash) {
       return null
     }
 
-    return await evmReadOnlyAccount.getTransactionReceipt(transactionHash)
+    return await evmReadOnlyAccount.getTransactionReceipt(userOp.transactionHash)
   }
 
   /**

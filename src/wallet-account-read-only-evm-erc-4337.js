@@ -20,6 +20,8 @@ import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
 import { Safe4337Pack, GenericFeeEstimator } from '@wdk-safe-global/relay-kit'
 
+import { ethers } from 'ethers'
+
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').EvmTransaction} EvmTransaction */
@@ -67,9 +69,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * The safe's implementation of the erc-4337 standard.
      *
      * @protected
-     * @type {Safe4337Pack | undefined}
+     * @type {Record<string, Safe4337Pack>}
      */
-    this._safe4337Pack = undefined
+    this._safe4337Packs = {}
 
     /**
      * The safe's fee estimator.
@@ -94,10 +96,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   /**
    * Returns the account's address.
    *
+   * @param {string} [safe4337PackIdentifier] - The identifier of the safe's erc-4337 pack.
    * @returns {Promise<string>} The account's address.
    */
-  async getAddress () {
-    const safe4337pack = await this._getSafe4337Pack()
+  async getAddress (safe4337PackIdentifier = null) {
+    const safe4337pack = safe4337PackIdentifier ? await this._getSafe4337PackByIdentifier(safe4337PackIdentifier) : await this._getAccountSafe4337Pack()
 
     const address = await safe4337pack.protocolKit.getAddress()
 
@@ -143,15 +146,16 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
    * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken'>} [config] - If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
+   * @param {string?} [safe4337PackIdentifier] - The identifier of the safe's erc-4337 pack. If not provided, the account's default safe's erc-4337 pack will be used.
    * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
    */
-  async quoteSendTransaction (tx, config) {
+  async quoteSendTransaction (tx, config, safe4337PackIdentifier = null) {
     const { paymasterToken } = config ?? this._config
 
     const fee = await this._getUserOperationGasCost([tx].flat(), {
       paymasterTokenAddress: paymasterToken.address,
       amountToApprove: BigInt(Number.MAX_SAFE_INTEGER)
-    })
+    }, safe4337PackIdentifier)
 
     return { fee: BigInt(fee) }
   }
@@ -160,13 +164,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Quotes the costs of a transfer operation.
    *
    * @param {TransferOptions} options - The transfer's options.
-   * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken'>} [config] -  If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
+   * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken'>} [config] -  If set, overrides the 'paymasterToken' option defined in the wallet account configuration
+   * @param {string?} [safe4337PackIdentifier] - The identifier of the safe's erc-4337 pack. If not provided, the account's default safe's erc-4337 pack will be used.
    * @returns {Promise<Omit<TransferResult, 'hash'>>} The transfer's quotes.
    */
   async quoteTransfer (options, config) {
     const tx = await WalletAccountReadOnlyEvm._getTransferTransaction(options)
 
-    const result = await this.quoteSendTransaction(tx, config)
+    const result = await this.quoteSendTransaction(tx, config, safe4337PackIdentifier)
 
     return result
   }
@@ -175,10 +180,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Returns a transaction's receipt.
    *
    * @param {string} hash - The user operation hash.
+   * @param {string?} [safe4337PackIdentifier] - The identifier of the safe's erc-4337 pack. If not provided, the account's default safe's erc-4337 pack will be used.
    * @returns {Promise<EvmTransactionReceipt | null>} – The receipt, or null if the transaction has not been included in a block yet.
    */
-  async getTransactionReceipt (hash) {
-    const safe4337Pack = await this._getSafe4337Pack()
+  async getTransactionReceipt (hash, safe4337PackIdentifier = null) {
+    const safe4337Pack = safe4337PackIdentifier ? await this._getSafe4337PackByIdentifier(safe4337PackIdentifier) : await this._getAccountSafe4337Pack()
 
     const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
 
@@ -204,20 +210,44 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Returns the safe's erc-4337 pack of the account.
-   *
+   * Returns the safe4337PackIdentifier of the safe's erc-4337 pack of a specific set of owners.
+   * @param {string[]} owners - The owners' addresses.
+   * @param {number} threshold - The threshold of the owners.
+   * 
    * @protected
+   * 
+   * @returns {string} The identifier of the safe's erc-4337 pack.
+   */
+  _getSafe4337PackIdentifier (owners, threshold) {
+    const sortedOwners = owners.map(o => o.toLowerCase()).sort()
+    return ethers.solidityPackedKeccak256(
+      ['address[]', 'uint256'],
+      [sortedOwners, threshold]
+    )
+  }
+
+  /**
+   * Returns the safe's erc-4337 pack of a specific set of owners.
+   * @param {string[]} owners - The owners' addresses.
+   * @param {number} threshold - The threshold of the owners.
+   * @param {Signer?} signer - The signer of the owners. If not provided, the account's default safe's erc-4337 pack will be used.
+   * 
+   * @protected
+   * 
    * @returns {Promise<Safe4337Pack>} The safe's erc-4337 pack.
    */
-  async _getSafe4337Pack () {
-    if (!this._safe4337Pack) {
-      this._safe4337Pack = await Safe4337Pack.init({
-        provider: this._config.provider,
+  async _getSafe4337Pack (owners, threshold, signer = null) {
+    const safe4337PackIdentifier = this._getSafe4337PackIdentifier(owners, threshold)
+
+    if (!this._safe4337Packs[safe4337PackIdentifier]) {
+      this._safe4337Packs[safe4337PackIdentifier] = await Safe4337Pack.init({
+        provider: this._config.provider, 
+        signer: signer,
         bundlerUrl: this._config.bundlerUrl,
         safeModulesVersion: this._config.safeModulesVersion,
         options: {
-          owners: [this._ownerAccountAddress],
-          threshold: 1,
+          owners: owners,
+          threshold: threshold,
           saltNonce: SALT_NONCE
         },
         paymasterOptions: {
@@ -232,7 +262,34 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       })
     }
 
-    return this._safe4337Pack
+    return this._safe4337Packs[safe4337PackIdentifier]
+  }
+
+  /**
+   * Returns the safe's erc-4337 pack of the account.
+   *
+   * @protected
+   * @returns {Promise<Safe4337Pack>} The safe's erc-4337 pack.
+   */
+  async _getAccountSafe4337Pack () {
+    return await this._getSafe4337Pack([this._ownerAccountAddress], 1, null)
+  }
+
+  /**
+   * Returns the safe's erc-4337 pack by identifier.
+   * @param {string} safe4337PackIdentifier - The identifier of the safe's erc-4337 pack.
+   * 
+   * @protected
+   * 
+   * @returns {Safe4337Pack} The safe's erc-4337 pack.
+   * @throws {Error} If the safe4337Pack with the given identifier doesn't exist.
+   */
+  _getSafe4337PackByIdentifier (safe4337PackIdentifier) {
+    if (!this._safe4337Packs[safe4337PackIdentifier]) {
+      throw new Error(`Safe4337Pack with identifier "${safe4337PackIdentifier}" not found. Please create it first using _createSafe4337Pack().`)
+    }
+
+    return this._safe4337Packs[safe4337PackIdentifier]
   }
 
   /**
@@ -277,8 +334,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /** @private */
-  async _getUserOperationGasCost (txs, options) {
-    const safe4337Pack = await this._getSafe4337Pack()
+  async _getUserOperationGasCost (txs, options, safe4337PackIdentifier = null) {
+    const safe4337Pack = safe4337PackIdentifier ? await this._getSafe4337PackByIdentifier(safe4337PackIdentifier) : await this._getAccountSafe4337Pack()
 
     const address = await this.getAddress()
 

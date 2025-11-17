@@ -216,40 +216,21 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     this._ownerAccount.dispose()
   }
 
-  async _getSafe4337Pack () {
-    if (!this._safe4337Pack) {
-      const owner = await this._ownerAccount.getAddress()
-
-      this._safe4337Pack = await Safe4337Pack.init({
-        provider: this._config.provider,
-        signer: this._ownerAccount._account,
-        bundlerUrl: this._config.bundlerUrl,
-        safeModulesVersion: this._config.safeModulesVersion,
-        options: {
-          owners: [owner],
-          threshold: 1,
-          saltNonce: SALT_NONCE
-        },
-        paymasterOptions: {
-          paymasterUrl: this._config.paymasterUrl,
-          paymasterAddress: this._config.paymasterAddress,
-          paymasterTokenAddress: this._config.paymasterToken.address,
-          skipApproveTransaction: true
-        },
-        customContracts: {
-          entryPointAddress: this._config.entryPointAddress
-        }
-      })
-    }
-
-    return this._safe4337Pack
-  }
+  /**
+   * Returns the safe's erc-4337 pack of the account.
+   *
+   * @protected
+   * @returns {Promise<Safe4337Pack>} The safe's erc-4337 pack.
+   */
+  async _getAccountSafe4337Pack () {
+    return await this._getSafe4337Pack([this._ownerAccountAddress], 1, this._ownerAccount._account)
+  }  
 
   /** @private */
-  async _sendUserOperation (txs, options) {
-    const safe4337Pack = await this._getSafe4337Pack()
+  async _sendUserOperation (txs, options, safe4337PackIdentifier = null) {
+    const safe4337Pack = safe4337PackIdentifier ? await this._getSafe4337PackByIdentifier(safe4337PackIdentifier) : await this._getAccountSafe4337Pack()
 
-    const address = await this.getAddress()
+    const address = await this.getAddress(safe4337PackIdentifier)
 
     const twoMinutesFromNow = Math.floor(Date.now() / 1_000) + 2 * 60
 

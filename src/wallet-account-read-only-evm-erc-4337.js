@@ -180,11 +180,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Returns a transaction's receipt.
    *
    * @param {string} hash - The user operation hash.
-   * @param {string?} [safe4337PackIdentifier] - The identifier of the safe's erc-4337 pack. If not provided, the account's default safe's erc-4337 pack will be used.
    * @returns {Promise<EvmTransactionReceipt | null>} – The receipt, or null if the transaction has not been included in a block yet.
    */
-  async getTransactionReceipt (hash, safe4337PackIdentifier = null) {
-    const safe4337Pack = safe4337PackIdentifier ? await this._getSafe4337PackByIdentifier(safe4337PackIdentifier) : await this._getAccountSafe4337Pack()
+  async getTransactionReceipt (hash) {
+    const safe4337Pack = await this._getAccountSafe4337Pack()
 
     const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
 

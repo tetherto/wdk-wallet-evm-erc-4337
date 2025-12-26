@@ -53,7 +53,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
    */
   constructor (address, config) {
-    super(undefined)
+    const safeAddress = WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config)
+
+    super(safeAddress)
 
     /**
      * The read-only evm erc-4337 wallet account configuration.
@@ -87,31 +89,20 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Returns the account's address.
-   *
-   * @returns {Promise<string>} The account's address.
-   */
-  async getAddress () {
-    const safe4337pack = await this._getSafe4337Pack()
-
-    const address = await safe4337pack.protocolKit.getAddress()
-
-    return address
-  }
-
-  /**
    * Returns the predicted Safe address for this account configuration.
    *
+   * @param {string} address - The owner account's address.
+   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
    * @returns {string} The predicted Safe address.
    */
-  predictSafeAddress () {
+  static predictSafeAddress (address, config) {
     const safeAddress = Safe4337Pack.predictSafeAddress({
       threshold: 1,
-      owner: this._ownerAccountAddress,
+      owner: address,
       saltNonce: SALT_NONCE,
-      chainId: this._config.chainId,
+      chainId: config.chainId,
       safeVersion: '1.4.1',
-      safeModulesVersion: this._config.safeModulesVersion
+      safeModulesVersion: config.safeModulesVersion
     })  
 
     return safeAddress

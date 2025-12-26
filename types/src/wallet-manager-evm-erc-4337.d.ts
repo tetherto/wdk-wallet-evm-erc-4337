@@ -48,7 +48,7 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
     getFeeRates(): Promise<FeeRates>;
 }
 export type Provider = import("ethers").Provider;
-export type FeeRates = import("@wdk/wallet-evm").FeeRates;
+export type FeeRates = import("@tetherto/wdk-wallet-evm").FeeRates;
 export type EvmErc4337WalletConfig = import("./wallet-account-evm-erc-4337.js").EvmErc4337WalletConfig;
-import WalletManager from '@wdk/wallet';
+import WalletManager from '@tetherto/wdk-wallet';
 import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js';

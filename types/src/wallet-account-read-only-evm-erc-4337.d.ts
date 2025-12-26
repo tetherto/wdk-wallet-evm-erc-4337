@@ -24,9 +24,16 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * The safe's fee estimator.
      *
      * @protected
-     * @type {GenericFeeEstimator}
+     * @type {GenericFeeEstimator | undefined}
      */
-    protected _feeEstimator: GenericFeeEstimator;
+    protected _feeEstimator: GenericFeeEstimator | undefined;
+    /**
+     * The chain id.
+     *
+     * @protected
+     * @type {bigint | undefined}
+     */
+    protected _chainId: bigint | undefined;
     /** @private */
     private _ownerAccountAddress;
     /**
@@ -72,23 +79,39 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     getTransactionReceipt(hash: string): Promise<EvmTransactionReceipt | null>;
     /**
+     * Returns the current allowance for the given token and spender.
+     * @param {string} token - The token’s address.
+     * @param {string} spender - The spender’s address.
+     * @returns {Promise<bigint>} - The allowance.
+     */
+    getAllowance(token: string, spender: string): Promise<bigint>;
+    /**
      * Returns the safe's erc-4337 pack of the account.
      *
      * @protected
      * @returns {Promise<Safe4337Pack>} The safe's erc-4337 pack.
      */
     protected _getSafe4337Pack(): Promise<Safe4337Pack>;
+    /**
+     * Returns the chain id.
+     *
+     * @protected
+     * @returns {Promise<bigint>} - The chain id.
+     */
+    protected _getChainId(): Promise<bigint>;
     /** @private */
     private _getEvmReadOnlyAccount;
+    /** @private */
+    private _getFeeEstimator;
     /** @private */
     private _getUserOperationGasCost;
 }
 export type Eip1193Provider = import("ethers").Eip1193Provider;
-export type EvmTransaction = import("@wdk/wallet-evm").EvmTransaction;
-export type TransactionResult = import("@wdk/wallet-evm").TransactionResult;
-export type TransferOptions = import("@wdk/wallet-evm").TransferOptions;
-export type TransferResult = import("@wdk/wallet-evm").TransferResult;
-export type EvmTransactionReceipt = import("@wdk/wallet-evm").EvmTransactionReceipt;
+export type EvmTransaction = import("@tetherto/wdk-wallet-evm").EvmTransaction;
+export type TransactionResult = import("@tetherto/wdk-wallet-evm").TransactionResult;
+export type TransferOptions = import("@tetherto/wdk-wallet-evm").TransferOptions;
+export type TransferResult = import("@tetherto/wdk-wallet-evm").TransferResult;
+export type EvmTransactionReceipt = import("@tetherto/wdk-wallet-evm").EvmTransactionReceipt;
 export type EvmErc4337WalletConfig = {
     /**
      * - The blockchain's id (e.g., 1 for ethereum).
@@ -129,5 +152,5 @@ export type EvmErc4337WalletConfig = {
      */
     transferMaxFee?: number | bigint;
 };
-import { WalletAccountReadOnly } from '@wdk/wallet';
+import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';
 import { GenericFeeEstimator, Safe4337Pack } from '@wdk-safe-global/relay-kit';

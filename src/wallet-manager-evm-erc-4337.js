@@ -14,9 +14,9 @@
 
 'use strict'
 
-import WalletManager from '@wdk/wallet'
+import WalletManager from '@tetherto/wdk-wallet'
 
-import WalletManagerEvm from '@wdk/wallet-evm'
+import WalletManagerEvm from '@tetherto/wdk-wallet-evm'
 
 import { BrowserProvider, JsonRpcProvider } from 'ethers'
 
@@ -24,7 +24,7 @@ import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
 
 /** @typedef {import('ethers').Provider} Provider */
 
-/** @typedef {import('@wdk/wallet-evm').FeeRates} FeeRates */
+/** @typedef {import('@tetherto/wdk-wallet-evm').FeeRates} FeeRates */
 
 /** @typedef {import('./wallet-account-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
 

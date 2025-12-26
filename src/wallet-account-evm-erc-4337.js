@@ -14,7 +14,9 @@
 
 'use strict'
 
-import { WalletAccountEvm } from '@wdk/wallet-evm'
+import { Contract } from 'ethers'
+
+import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
 import { Safe4337Pack } from '@wdk-safe-global/relay-kit'
 
@@ -22,18 +24,21 @@ import WalletAccountReadOnlyEvmErc4337, { SALT_NONCE } from './wallet-account-re
 
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
-/** @typedef {import('@wdk/wallet').IWalletAccount} IWalletAccount */
+/** @typedef {import('@tetherto/wdk-wallet').IWalletAccount} IWalletAccount */
 
-/** @typedef {import('@wdk/wallet-evm').KeyPair} KeyPair */
+/** @typedef {import('@tetherto/wdk-wallet-evm').KeyPair} KeyPair */
 
-/** @typedef {import('@wdk/wallet-evm').EvmTransaction} EvmTransaction */
-/** @typedef {import('@wdk/wallet-evm').TransactionResult} TransactionResult */
-/** @typedef {import('@wdk/wallet-evm').TransferOptions} TransferOptions */
-/** @typedef {import('@wdk/wallet-evm').TransferResult} TransferResult */
+/** @typedef {import('@tetherto/wdk-wallet-evm').EvmTransaction} EvmTransaction */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TransactionResult} TransactionResult */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TransferOptions} TransferOptions */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TransferResult} TransferResult */
+/** @typedef {import('@tetherto/wdk-wallet-evm').ApproveOptions} ApproveOptions */
 
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
 
 const FEE_TOLERANCE_COEFFICIENT = 120n
+
+const USDT_MAINNET_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
 
 /** @implements {IWalletAccount} */
 export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc4337 {
@@ -107,6 +112,42 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    */
   async verify (message, signature) {
     return await this._ownerAccount.verify(message, signature)
+  }
+
+  /**
+   * Approves a specific amount of tokens to a spender.
+   *
+   * @param {ApproveOptions} options - The approve options.
+   * @returns {Promise<TransactionResult>} - The transaction’s result.
+   * @throws {Error} - If trying to approve usdts on ethereum with allowance not equal to zero (due to the usdt allowance reset requirement).
+   */
+  async approve (options) {
+    if (!this._ownerAccount._provider) {
+      throw new Error('The wallet must be connected to a provider to approve funds.')
+    }
+
+    const { token, spender, amount } = options
+    const chainId = await this._getChainId()
+
+    if (chainId === 1n && token.toLowerCase() === USDT_MAINNET_ADDRESS.toLowerCase()) {
+      const currentAllowance = await this.getAllowance(token, spender)
+      if (currentAllowance > 0n && BigInt(amount) > 0n) {
+        throw new Error(
+          'USDT requires the current allowance to be reset to 0 before setting a new non-zero value. Please send an "approve" transaction with an amount of 0 first.'
+        )
+      }
+    }
+
+    const abi = ['function approve(address spender, uint256 amount) returns (bool)']
+    const contract = new Contract(token, abi, this._ownerAccount._provider)
+
+    const tx = {
+      to: token,
+      value: 0,
+      data: contract.interface.encodeFunctionData('approve', [spender, amount])
+    }
+
+    return await this.sendTransaction(tx)
   }
 
   /**
@@ -217,7 +258,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
         transactions: txs.map(tx => ({ from: address, ...tx })),
         options: {
           validUntil: twoMinutesFromNow,
-          feeEstimator: this._feeEstimator,
+          feeEstimator: await this._getFeeEstimator(),
           ...options
         }
       })

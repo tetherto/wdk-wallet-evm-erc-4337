@@ -14,20 +14,20 @@
 
 'use strict'
 
-import { WalletAccountReadOnly } from '@wdk/wallet'
+import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 
-import { WalletAccountReadOnlyEvm } from '@wdk/wallet-evm'
+import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
 import { Safe4337Pack, GenericFeeEstimator } from '@wdk-safe-global/relay-kit'
 
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
-/** @typedef {import('@wdk/wallet-evm').EvmTransaction} EvmTransaction */
-/** @typedef {import('@wdk/wallet-evm').TransactionResult} TransactionResult */
-/** @typedef {import('@wdk/wallet-evm').TransferOptions} TransferOptions */
-/** @typedef {import('@wdk/wallet-evm').TransferResult} TransferResult */
+/** @typedef {import('@tetherto/wdk-wallet-evm').EvmTransaction} EvmTransaction */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TransactionResult} TransactionResult */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TransferOptions} TransferOptions */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TransferResult} TransferResult */
 
-/** @typedef {import('@wdk/wallet-evm').EvmTransactionReceipt} EvmTransactionReceipt */
+/** @typedef {import('@tetherto/wdk-wallet-evm').EvmTransactionReceipt} EvmTransactionReceipt */
 
 /**
  * @typedef {Object} EvmErc4337WalletConfig
@@ -77,12 +77,17 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * The safe's fee estimator.
      *
      * @protected
-     * @type {GenericFeeEstimator}
+     * @type {GenericFeeEstimator | undefined}
      */
-    this._feeEstimator = new GenericFeeEstimator(
-      config.provider,
-      `0x${config.chainId.toString(16)}`
-    )
+    this._feeEstimator = undefined
+
+    /**
+     * The chain id.
+     *
+     * @protected
+     * @type {bigint | undefined}
+     */
+    this._chainId = undefined
 
     /** @private */
     this._ownerAccountAddress = address
@@ -186,13 +191,25 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
     const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
 
-    const { transactionHash } = await safe4337Pack.getUserOperationByHash(hash)
+    const userOp = await safe4337Pack.getUserOperationByHash(hash)
 
-    if (!transactionHash) {
+    if (!userOp || !userOp.transactionHash) {
       return null
     }
 
-    return await evmReadOnlyAccount.getTransactionReceipt(transactionHash)
+    return await evmReadOnlyAccount.getTransactionReceipt(userOp.transactionHash)
+  }
+
+  /**
+   * Returns the current allowance for the given token and spender.
+   * @param {string} token - The token’s address.
+   * @param {string} spender - The spender’s address.
+   * @returns {Promise<bigint>} - The allowance.
+   */
+  async getAllowance (token, spender) {
+    const readOnlyAccount = await this._getEvmReadOnlyAccount()
+
+    return await readOnlyAccount.getAllowance(token, spender)
   }
 
   /**
@@ -227,6 +244,24 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     return this._safe4337Pack
   }
 
+  /**
+   * Returns the chain id.
+   *
+   * @protected
+   * @returns {Promise<bigint>} - The chain id.
+   */
+  async _getChainId () {
+    if (!this._chainId) {
+      const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
+
+      const { chainId } = await evmReadOnlyAccount._provider.getNetwork()
+
+      this._chainId = chainId
+    }
+
+    return this._chainId
+  }
+
   /** @private */
   async _getEvmReadOnlyAccount () {
     const address = await this.getAddress()
@@ -234,6 +269,20 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(address, this._config)
 
     return evmReadOnlyAccount
+  }
+
+  /** @private */
+  async _getFeeEstimator () {
+    if (!this._feeEstimator) {
+      const chainId = await this._getChainId()
+
+      this._feeEstimator = new GenericFeeEstimator(
+        this._config.provider,
+        `0x${chainId.toString(16)}`
+      )
+    }
+
+    return this._feeEstimator
   }
 
   /** @private */
@@ -246,7 +295,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       const safeOperation = await safe4337Pack.createTransaction({
         transactions: txs.map(tx => ({ from: address, ...tx })),
         options: {
-          feeEstimator: this._feeEstimator,
+          feeEstimator: await this._getFeeEstimator(),
           ...options
         }
       })

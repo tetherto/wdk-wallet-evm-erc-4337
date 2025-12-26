@@ -14,14 +14,15 @@
 
 'use strict'
 
-/** @typedef {import('@wdk/wallet-evm').FeeRates} FeeRates */
+/** @typedef {import('@tetherto/wdk-wallet-evm').FeeRates} FeeRates */
 
-/** @typedef {import('@wdk/wallet-evm').KeyPair} KeyPair */
-/** @typedef {import('@wdk/wallet-evm').EvmTransaction} EvmTransaction */
-/** @typedef {import('@wdk/wallet-evm').TransactionResult} TransactionResult */
-/** @typedef {import('@wdk/wallet-evm').TransferOptions} TransferOptions */
-/** @typedef {import('@wdk/wallet-evm').TransferResult} TransferResult */
-/** @typedef {import('@wdk/wallet-evm').EvmTransactionReceipt} EvmTransactionReceipt */
+/** @typedef {import('@tetherto/wdk-wallet-evm').KeyPair} KeyPair */
+/** @typedef {import('@tetherto/wdk-wallet-evm').EvmTransaction} EvmTransaction */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TransactionResult} TransactionResult */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TransferOptions} TransferOptions */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TransferResult} TransferResult */
+/** @typedef {import('@tetherto/wdk-wallet-evm').EvmTransactionReceipt} EvmTransactionReceipt */
+/** @typedef {import('@tetherto/wdk-wallet-evm').ApproveOptions} ApproveOptions */
 
 /** @typedef {import('./src/wallet-manager-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
 

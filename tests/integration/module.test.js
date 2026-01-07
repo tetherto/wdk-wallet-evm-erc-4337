@@ -10,7 +10,6 @@ import path from 'path'
 
 const TIMEOUT = 60000 // 60 seconds
 
-let PAYMASTER_ADDRESS
 const ENTRY_POINT_ADDRESS = '0x0000000071727De22E5E9d8BAf0edAc6f37da032'
 
 const ethersProvider = new ethers.JsonRpcProvider('http://localhost:8545')
@@ -112,17 +111,15 @@ async function fundAccountsWithEth () {
     await fundedWallet.sendTransaction({
       to: account.address,
       value: ethers.parseEther('10'),
-      nonce
+      nonce: nonce++
     })
-    nonce++
   }
 }
 
 async function fundAccountsWithTokens (testToken, accounts) {
   let nonce = await ethersProvider.getTransactionCount(fundedWallet.address)
   for (const account of accounts) {
-    await transfer(testToken, account, 100, fundedWallet, nonce)
-    nonce++
+    await transfer(testToken, account, 100, fundedWallet, nonce++)
   }
 }
 
@@ -132,6 +129,7 @@ describe('@wdk/wallet-evm-erc-4337', () => {
   let testToken
   let mockPaymasterToken
   let bundlerInstance, paymasterInstance
+  let paymasterAddress
 
   beforeAll(async () => {
     await fundAccountsWithEth()
@@ -145,7 +143,7 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     bundlerInstance = servers.bundlerInstance
     paymasterInstance = servers.paymasterInstance
 
-    PAYMASTER_ADDRESS = await discoverPaymasterAddress('http://localhost:3000', ENTRY_POINT_ADDRESS, MOCK_PAYMASTER_TOKEN_ADDRESS)
+    paymasterAddress = await discoverPaymasterAddress('http://localhost:3000', ENTRY_POINT_ADDRESS, MOCK_PAYMASTER_TOKEN_ADDRESS)
 
     const config = {
       chainId: 1,
@@ -153,7 +151,7 @@ describe('@wdk/wallet-evm-erc-4337', () => {
       bundlerUrl: 'http://localhost:4337',
       paymasterUrl: 'http://localhost:3000?pimlico',
       entryPointAddress: ENTRY_POINT_ADDRESS,
-      paymasterAddress: PAYMASTER_ADDRESS,
+      paymasterAddress: paymasterAddress,
       safeModulesVersion: '0.3.0',
       paymasterToken: {
         address: MOCK_PAYMASTER_TOKEN_ADDRESS
@@ -175,18 +173,15 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     await fundedWallet.sendTransaction({
       to: safeAddress0,
       value: ethers.parseEther('1'),
-      nonce
+      nonce: nonce++
     })
-    nonce++
     await fundedWallet.sendTransaction({
       to: safeAddress1,
       value: ethers.parseEther('1'),
-      nonce
+      nonce: nonce++
     })
-    nonce++
-    await mintMockTokens(safeAddress0, ethers.parseEther('1000'), fundedWallet, nonce)
-    nonce++
-    await mintMockTokens(safeAddress1, ethers.parseEther('1000'), fundedWallet, nonce)
+    await mintMockTokens(safeAddress0, ethers.parseEther('1000'), fundedWallet, nonce++)
+    await mintMockTokens(safeAddress1, ethers.parseEther('1000'), fundedWallet, nonce++)
   }, TIMEOUT)
 
   afterAll(async () => {
@@ -412,7 +407,7 @@ describe('@wdk/wallet-evm-erc-4337', () => {
       bundlerUrl: 'http://localhost:4337',
       paymasterUrl: 'http://localhost:3000?pimlico',
       entryPointAddress: ENTRY_POINT_ADDRESS,
-      paymasterAddress: PAYMASTER_ADDRESS,
+      paymasterAddress: paymasterAddress,
       safeModulesVersion: '0.3.0',
       paymasterToken: {
         address: MOCK_PAYMASTER_TOKEN_ADDRESS

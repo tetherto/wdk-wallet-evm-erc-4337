@@ -160,6 +160,14 @@ export type EvmErc4337WalletConfig = {
      * - The maximum fee amount for transfer operations.
      */
     transferMaxFee?: number | bigint;
+    /**
+     * - Whether the transaction is sponsored.
+     */
+    isSponsored?: boolean;
+    /**
+     * - The sponsorship policy id.
+     */
+    sponsorshipPolicyId?: string;
 };
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';
 import { GenericFeeEstimator, Safe4337Pack } from '@wdk-safe-global/relay-kit';

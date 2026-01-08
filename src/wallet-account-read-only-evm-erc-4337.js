@@ -43,6 +43,8 @@ import { Safe4337Pack, GenericFeeEstimator, PimlicoFeeEstimator } from '@wdk-saf
  * @property {Object} paymasterToken - The paymaster token configuration.
  * @property {string} paymasterToken.address - The address of the paymaster token.
  * @property {number | bigint} [transferMaxFee] - The maximum fee amount for transfer operations.
+ * @property {boolean} [isSponsored] - Whether the transaction is sponsored.
+ * @property {string} [sponsorshipPolicyId] - The sponsorship policy id.
  */
 
 export const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
@@ -148,7 +150,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
    */
   async quoteSendTransaction (tx, config) {
-    const { paymasterToken } = config ?? this._config
+    const { paymasterToken, isSponsored } = config ?? this._config
+
+    if (isSponsored) {
+      return { fee: 0n }
+    }
 
     const fee = await this._getUserOperationGasCost([tx].flat(), {
       paymasterTokenAddress: paymasterToken.address,
@@ -166,9 +172,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<Omit<TransferResult, 'hash'>>} The transfer's quotes.
    */
   async quoteTransfer (options, config) {
+    const { isSponsored, sponsorshipPolicyId } = config ?? this._config
+
     const tx = await WalletAccountReadOnlyEvm._getTransferTransaction(options)
 
-    const result = await this.quoteSendTransaction(tx, config)
+    const result = await this.quoteSendTransaction(tx, { ...config, isSponsored, sponsorshipPolicyId })
 
     return result
   }
@@ -282,8 +290,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   /** @private */
   async _getFeeEstimator () {
     if (!this._feeEstimator) {
-      const { bundlerUrl, paymasterUrl } = this._config
-      const isPimlico = (bundlerUrl && bundlerUrl.includes('pimlico')) || (paymasterUrl && paymasterUrl.includes('pimlico'))
+      const { bundlerUrl } = this._config
+      const isPimlico = bundlerUrl?.includes('pimlico')
 
       if (isPimlico) {
         this._feeEstimator = new PimlicoFeeEstimator()

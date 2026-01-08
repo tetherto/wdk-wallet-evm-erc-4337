@@ -62,18 +62,18 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * Sends a transaction.
      *
      * @param {EvmTransaction | EvmTransaction[]} tx -  The transaction, or an array of multiple transactions to send in batch.
-     * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken'>} [config] - If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
+     * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken' | 'isSponsored' | 'sponsorshipPolicyId'>} [config] - If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
      * @returns {Promise<TransactionResult>} The transaction's result.
      */
-    sendTransaction(tx: EvmTransaction | EvmTransaction[], config?: Pick<EvmErc4337WalletConfig, "paymasterToken">): Promise<TransactionResult>;
+    sendTransaction(tx: EvmTransaction | EvmTransaction[], config?: Pick<EvmErc4337WalletConfig, "paymasterToken" | "isSponsored" | "sponsorshipPolicyId">): Promise<TransactionResult>;
     /**
      * Transfers a token to another address.
      *
      * @param {TransferOptions} options - The transfer's options.
-     * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken' | 'transferMaxFee'>} [config] - If set, overrides the 'paymasterToken' and 'transferMaxFee' options defined in the wallet account configuration.
+     * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken' | 'transferMaxFee' | 'isSponsored' | 'sponsorshipPolicyId'>} [config] - If set, overrides the 'paymasterToken' and 'transferMaxFee' options defined in the wallet account configuration.
      * @returns {Promise<TransferResult>} The transfer's result.
      */
-    transfer(options: TransferOptions, config?: Pick<EvmErc4337WalletConfig, "paymasterToken" | "transferMaxFee">): Promise<TransferResult>;
+    transfer(options: TransferOptions, config?: Pick<EvmErc4337WalletConfig, "paymasterToken" | "transferMaxFee" | "isSponsored" | "sponsorshipPolicyId">): Promise<TransferResult>;
     /**
      * Returns a read-only copy of the account.
      *

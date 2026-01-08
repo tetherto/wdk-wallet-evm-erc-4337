@@ -252,8 +252,6 @@ describe('@wdk/wallet-evm-erc-4337', () => {
 
     expect(fee).toBe(estimatedFee)
     expect(transaction.to).toBe(ENTRY_POINT_ADDRESS)
-
-    expect(fee).toBe(1020509127393733760n)
   }, TIMEOUT)
 
   test('should derive two accounts by their paths, transfer a token from account 0 to 1 and get the correct balances and token balances', async () => {

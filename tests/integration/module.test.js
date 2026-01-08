@@ -38,6 +38,7 @@ const ACCOUNT1 = {
 }
 
 const SAFE_ADDRESS0 = '0x120Ac3c0B46fBAf2e8452A23BD61a2Da9B139551'
+const SAFE_ADDRESS1 = '0x6aE57374d05AEc93fcc1ab0Be1b8cFf5dFdEF3f4'
 
 async function waitForTx (txHash, account) {
   let receipt = null
@@ -252,7 +253,9 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     const transaction = await waitForTx(hash, account0)
 
     expect(transaction.status).toBe(1)
-    expect(fee).toBe(fee)
+    expect(transaction.to).toBe(ENTRY_POINT_ADDRESS)
+
+    expect(fee).toBe(1020509127393733760n)
   }, TIMEOUT)
 
   test('should derive two accounts by their paths, transfer a token from account 0 to 1 and get the correct balances and token balances', async () => {

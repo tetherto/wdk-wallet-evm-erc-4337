@@ -35,6 +35,8 @@ import WalletAccountReadOnlyEvmErc4337, { SALT_NONCE } from './wallet-account-re
 /** @typedef {import('@tetherto/wdk-wallet-evm').ApproveOptions} ApproveOptions */
 
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
+/** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletPaymasterTokenConfig} EvmErc4337WalletPaymasterTokenConfig */
+/** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletSponsorshipPolicyConfig} EvmErc4337WalletSponsorshipPolicyConfig */
 
 const FEE_TOLERANCE_COEFFICIENT = 120n
 
@@ -154,7 +156,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * Sends a transaction.
    *
    * @param {EvmTransaction | EvmTransaction[]} tx -  The transaction, or an array of multiple transactions to send in batch.
-   * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken' | 'isSponsored' | 'sponsorshipPolicyId'>} [config] - If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
+   * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | EvmErc4337WalletSponsorshipPolicyConfig} [config] - If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
    * @returns {Promise<TransactionResult>} The transaction's result.
    */
   async sendTransaction (tx, config) {
@@ -178,7 +180,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * Transfers a token to another address.
    *
    * @param {TransferOptions} options - The transfer's options.
-   * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken' | 'transferMaxFee' | 'isSponsored' | 'sponsorshipPolicyId'>} [config] - If set, overrides the 'paymasterToken' and 'transferMaxFee' options defined in the wallet account configuration.
+   * @param {EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig} [config] - If set, overrides the 'paymasterToken' and 'transferMaxFee' options defined in the wallet account configuration.
    * @returns {Promise<TransferResult>} The transfer's result.
    */
   async transfer (options, config) {

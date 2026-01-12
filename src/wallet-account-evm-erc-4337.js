@@ -243,7 +243,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
         paymasterOptions: {
           paymasterUrl: this._config.paymasterUrl,
           paymasterAddress: this._config.paymasterAddress,
-          paymasterTokenAddress: this._config.paymasterToken.address,
+          paymasterTokenAddress: this._config.paymasterToken?.address,
           skipApproveTransaction: true
         },
         customContracts: {

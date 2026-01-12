@@ -104,17 +104,6 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 
   /**
-   * Verifies a message's signature.
-   *
-   * @param {string} message - The original message.
-   * @param {string} signature - The signature to verify.
-   * @returns {Promise<boolean>} True if the signature is valid.
-   */
-  async verify (message, signature) {
-    return await this._ownerAccount.verify(message, signature)
-  }
-
-  /**
    * Approves a specific amount of tokens to a spender.
    *
    * @param {ApproveOptions} options - The approve options.

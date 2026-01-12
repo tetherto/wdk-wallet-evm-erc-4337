@@ -43,14 +43,6 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      */
     sign(message: string): Promise<string>;
     /**
-     * Verifies a message's signature.
-     *
-     * @param {string} message - The original message.
-     * @param {string} signature - The signature to verify.
-     * @returns {Promise<boolean>} True if the signature is valid.
-     */
-    verify(message: string, signature: string): Promise<boolean>;
-    /**
      * Approves a specific amount of tokens to a spender.
      *
      * @param {ApproveOptions} options - The approve options.

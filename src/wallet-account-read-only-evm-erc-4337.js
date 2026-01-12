@@ -221,6 +221,19 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
+   * Verifies a message's signature.
+   *
+   * @param {string} message - The original message.
+   * @param {string} signature - The signature to verify.
+   * @returns {Promise<boolean>} True if the signature is valid.
+   */
+  async verify (message, signature) {
+    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, this._config)
+
+    return await evmReadOnlyAccount.verify(message, signature)
+  }
+
+  /**
    * Returns the safe's erc-4337 pack of the account.
    *
    * @protected

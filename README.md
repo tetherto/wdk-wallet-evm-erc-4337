@@ -440,7 +440,7 @@ Sends a transaction via UserOperation through the ERC-4337 bundler.
   - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
   - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
   - `maxPriorityFeePerGas` (number | bigint, optional): EIP-1559 max priority fee per gas in wei
-- `config` (object, optional): Configuration override
+- `config` (object, optional): Configuration override. This object replaces the sponsorship/paymaster configuration context entirely (e.g. switching from token payment to sponsorship).
   - `isSponsored` (boolean, optional): Override sponsorship setting
   - `sponsorshipPolicyId` (string, optional): Override policy ID
   - `paymasterToken` (object, optional): Override paymaster token
@@ -505,7 +505,7 @@ Transfers ERC20 tokens via UserOperation through the bundler.
   - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
   - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
   - `maxPriorityFeePerGas` (number | bigint, optional): EIP-1559 max priority fee per gas in wei
-- `config` (object, optional): Configuration override
+- `config` (object, optional): Configuration override. This object replaces the sponsorship/paymaster configuration context entirely (e.g. switching from token payment to sponsorship).
   - `isSponsored` (boolean, optional): Override sponsorship setting
   - `sponsorshipPolicyId` (string, optional): Override policy ID
   - `paymasterToken` (object, optional): Override paymaster token

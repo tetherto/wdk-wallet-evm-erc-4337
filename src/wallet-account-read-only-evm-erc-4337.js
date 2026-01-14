@@ -45,7 +45,7 @@ import { Safe4337Pack, GenericFeeEstimator, PimlicoFeeEstimator } from '@tethert
 /**
  * @typedef {Object} EvmErc4337WalletPaymasterTokenConfig
  * @property {false} [isSponsored] - Whether the transaction is sponsored.
- * @property {Object} paymasterToken - The paymaster token configuration.
+ * @property {Object | null} paymasterToken - The paymaster token configuration.
  * @property {string} paymasterToken.address - The address of the paymaster token.
  * @property {number | bigint} [transferMaxFee] - The maximum fee amount for transfer operations.
  */
@@ -161,6 +161,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   async getPaymasterTokenBalance () {
     const { paymasterToken } = this._config
 
+    if (paymasterToken === null) {
+      return await this.getBalance()
+    }
+
     if (!paymasterToken) {
       throw new Error('Paymaster token is not configured.')
     }
@@ -182,10 +186,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       return { fee: 0n }
     }
 
+    const usePaymaster = isSponsored || paymasterToken !== null
+
     const fee = await this._getUserOperationGasCost([tx].flat(), {
-      paymasterTokenAddress: paymasterToken.address,
-      amountToApprove: BigInt(Number.MAX_SAFE_INTEGER)
-    })
+      paymasterTokenAddress: paymasterToken === null ? undefined : paymasterToken.address,
+      amountToApprove: paymasterToken === null ? 0n : BigInt(Number.MAX_SAFE_INTEGER)
+    }, usePaymaster)
 
     return { fee: BigInt(fee) }
   }
@@ -271,7 +277,26 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @protected
    * @returns {Promise<Safe4337Pack>} The safe's erc-4337 pack.
    */
-  async _getSafe4337Pack () {
+  async _getSafe4337Pack (usePaymaster = true) {
+    if (!usePaymaster) {
+      if (!this._nativeSafe4337Pack) {
+        this._nativeSafe4337Pack = await Safe4337Pack.init({
+          provider: this._config.provider,
+          bundlerUrl: this._config.bundlerUrl,
+          safeModulesVersion: this._config.safeModulesVersion,
+          options: {
+            owners: [this._ownerAccountAddress],
+            threshold: 1,
+            saltNonce: SALT_NONCE
+          },
+          customContracts: {
+            entryPointAddress: this._config.entryPointAddress
+          }
+        })
+      }
+      return this._nativeSafe4337Pack
+    }
+
     if (!this._safe4337Pack) {
       this._safe4337Pack = await Safe4337Pack.init({
         provider: this._config.provider,
@@ -346,8 +371,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /** @private */
-  async _getUserOperationGasCost (txs, options) {
-    const safe4337Pack = await this._getSafe4337Pack()
+  async _getUserOperationGasCost (txs, options, usePaymaster = true) {
+    const safe4337Pack = await this._getSafe4337Pack(usePaymaster)
 
     const address = await this.getAddress()
 
@@ -370,6 +395,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       } = safeOperation.userOperation
 
       const gasCost = (callGasLimit + verificationGasLimit + preVerificationGas + paymasterVerificationGasLimit + paymasterPostOpGasLimit) * maxFeePerGas
+
+      if (!options.paymasterTokenAddress) {
+        return gasCost
+      }
 
       const exchangeRate = await safe4337Pack.getTokenExchangeRate(options.paymasterTokenAddress)
 

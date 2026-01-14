@@ -157,9 +157,9 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     const hash = await this._sendUserOperation([tx].flat(), {
       isSponsored,
-      paymasterTokenAddress: isSponsored ? undefined : paymasterToken.address,
+      paymasterTokenAddress: isSponsored ? undefined : paymasterToken?.address,
       sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined,
-      amountToApprove
+      amountToApprove: paymasterToken === null ? 0n : amountToApprove
     })
 
     return { hash, fee }
@@ -179,7 +179,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     const { fee } = await this.quoteSendTransaction(tx, config)
 
-    if (!isSponsored && transferMaxFee !== undefined && fee >= transferMaxFee) {
+    if (!isSponsored && paymasterToken !== null && transferMaxFee !== undefined && fee >= transferMaxFee) {
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
 
@@ -187,9 +187,9 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     const hash = await this._sendUserOperation([tx], {
       isSponsored,
-      paymasterTokenAddress: isSponsored ? undefined : paymasterToken.address,
+      paymasterTokenAddress: isSponsored ? undefined : paymasterToken?.address,
       sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined,
-      amountToApprove
+      amountToApprove: paymasterToken === null ? 0n : amountToApprove
     })
 
     return { hash, fee }
@@ -215,7 +215,29 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     this._ownerAccount.dispose()
   }
 
-  async _getSafe4337Pack () {
+  async _getSafe4337Pack (usePaymaster = true) {
+    if (!usePaymaster) {
+      if (!this._nativeSafe4337Pack) {
+        const owner = await this._ownerAccount.getAddress()
+
+        this._nativeSafe4337Pack = await Safe4337Pack.init({
+          provider: this._config.provider,
+          signer: this._ownerAccount._account,
+          bundlerUrl: this._config.bundlerUrl,
+          safeModulesVersion: this._config.safeModulesVersion,
+          options: {
+            owners: [owner],
+            threshold: 1,
+            saltNonce: SALT_NONCE
+          },
+          customContracts: {
+            entryPointAddress: this._config.entryPointAddress
+          }
+        })
+      }
+      return this._nativeSafe4337Pack
+    }
+
     if (!this._safe4337Pack) {
       const owner = await this._ownerAccount.getAddress()
 
@@ -246,7 +268,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
   /** @private */
   async _sendUserOperation (txs, options) {
-    const safe4337Pack = await this._getSafe4337Pack()
+    const usePaymaster = options.isSponsored || options.paymasterTokenAddress !== undefined
+    const safe4337Pack = await this._getSafe4337Pack(usePaymaster)
 
     const address = await this.getAddress()
 

@@ -182,7 +182,7 @@ export type EvmErc4337WalletPaymasterTokenConfig = {
          * - The address of the paymaster token.
          */
         address: string;
-    };
+    } | null;
     /**
      * - The maximum fee amount for transfer operations.
      */

@@ -255,6 +255,11 @@ new WalletManagerEvmErc4337(seed, config)
   - `factoryAddress` (string): Address of the account factory contract
   - `chainId` (number): Chain ID of the target network
   - `paymasterUrl` (string, optional): URL of the paymaster service
+  - `paymasterAddress` (string, optional): Address of the paymaster smart contract
+  - `isSponsored` (boolean, optional): Set to true to enable transaction sponsorship
+  - `sponsorshipPolicyId` (string, optional): Policy ID for sponsorship (Required if isSponsored is true)
+  - `paymasterToken` (object, optional): Paymaster token configuration (Required if isSponsored is false)
+    - `address` (string): Token contract address
   - `transferMaxFee` (number | bigint, optional): Maximum fee amount for transfer operations (in wei)
 
 **Example:**
@@ -361,6 +366,11 @@ new WalletAccountEvmErc4337(seed, path, config)
   - `factoryAddress` (string): Address of the account factory contract
   - `chainId` (number): Chain ID of the target network
   - `paymasterUrl` (string, optional): URL of the paymaster service
+  - `paymasterAddress` (string, optional): Address of the paymaster smart contract
+  - `isSponsored` (boolean, optional): Set to true to enable transaction sponsorship
+  - `sponsorshipPolicyId` (string, optional): Policy ID for sponsorship (Required if isSponsored is true)
+  - `paymasterToken` (object, optional): Paymaster token configuration (Required if isSponsored is false)
+    - `address` (string): Token contract address
   - `transferMaxFee` (number | bigint, optional): Maximum fee amount for transfer operations (in wei)
 
 #### Methods
@@ -370,10 +380,10 @@ new WalletAccountEvmErc4337(seed, path, config)
 | `getAddress()` | Returns the smart contract wallet address | `Promise<string>` |
 | `sign(message)` | Signs a message using the account's private key | `Promise<string>` |
 | `verify(message, signature)` | Verifies a message signature | `Promise<boolean>` |
-| `sendTransaction(tx)` | Sends a transaction via UserOperation | `Promise<{hash: string, fee: bigint}>` |
-| `quoteSendTransaction(tx)` | Estimates the fee for a UserOperation | `Promise<{fee: bigint}>` |
-| `transfer(options)` | Transfers ERC20 tokens via UserOperation | `Promise<{hash: string, fee: bigint}>` |
-| `quoteTransfer(options)` | Estimates the fee for an ERC20 transfer | `Promise<{fee: bigint}>` |
+| `sendTransaction(tx, config)` | Sends a transaction via UserOperation | `Promise<{hash: string, fee: bigint}>` |
+| `quoteSendTransaction(tx, config)` | Estimates the fee for a UserOperation | `Promise<{fee: bigint}>` |
+| `transfer(options, config)` | Transfers ERC20 tokens via UserOperation | `Promise<{hash: string, fee: bigint}>` |
+| `quoteTransfer(options, config)` | Estimates the fee for an ERC20 transfer | `Promise<{fee: bigint}>` |
 | `getBalance()` | Returns the native token balance (in wei) | `Promise<bigint>` |
 | `getTokenBalance(tokenAddress)` | Returns the balance of a specific ERC20 token | `Promise<bigint>` |
 | `dispose()` | Disposes the wallet account, clearing private keys from memory | `void` |
@@ -428,7 +438,12 @@ Sends a transaction via UserOperation through the ERC-4337 bundler.
   - `data` (string, optional): Transaction data in hex format
   - `gasLimit` (number | bigint, optional): Maximum gas units for the UserOperation
   - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
+  - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
   - `maxPriorityFeePerGas` (number | bigint, optional): EIP-1559 max priority fee per gas in wei
+- `config` (object, optional): Configuration override. This object replaces the sponsorship/paymaster configuration context entirely (e.g. switching from token payment to sponsorship).
+  - `isSponsored` (boolean, optional): Override sponsorship setting
+  - `sponsorshipPolicyId` (string, optional): Override policy ID
+  - `paymasterToken` (object, optional): Override paymaster token
 
 **Returns:** `Promise<{hash: string, fee: bigint}>` - Object containing UserOperation hash and total fee (in wei)
 
@@ -442,6 +457,16 @@ const result = await account.sendTransaction({
 })
 console.log('UserOperation hash:', result.hash)
 console.log('Total fee paid:', result.fee, 'wei')
+
+// Send sponsored transaction
+const sponsoredResult = await account.sendTransaction({
+  to: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
+  value: 1000000000000000000n
+}, {
+  isSponsored: true,
+  sponsorshipPolicyId: 'POLICY_ID'
+})
+console.log('Sponsored hash:', sponsoredResult.hash)
 ```
 
 ##### `quoteSendTransaction(tx)`
@@ -478,7 +503,12 @@ Transfers ERC20 tokens via UserOperation through the bundler.
   - `value` (number | bigint): Amount in token's smallest unit
   - `gasLimit` (number | bigint, optional): Maximum gas units
   - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
+  - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
   - `maxPriorityFeePerGas` (number | bigint, optional): EIP-1559 max priority fee per gas in wei
+- `config` (object, optional): Configuration override. This object replaces the sponsorship/paymaster configuration context entirely (e.g. switching from token payment to sponsorship).
+  - `isSponsored` (boolean, optional): Override sponsorship setting
+  - `sponsorshipPolicyId` (string, optional): Override policy ID
+  - `paymasterToken` (object, optional): Override paymaster token
 
 **Returns:** `Promise<{hash: string, fee: bigint}>` - Object containing UserOperation hash and fee (in wei)
 
@@ -492,6 +522,17 @@ const result = await account.transfer({
 })
 console.log('UserOperation hash:', result.hash)
 console.log('Gas fee paid:', result.fee, 'wei')
+
+// Send sponsored token transfer
+const sponsoredTransfer = await account.transfer({
+  to: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
+  tokenAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+  value: 1000000n
+}, {
+  isSponsored: true,
+  sponsorshipPolicyId: 'POLICY_ID'
+})
+console.log('Sponsored transfer hash:', sponsoredTransfer.hash)
 ```
 
 ##### `quoteTransfer(options)`

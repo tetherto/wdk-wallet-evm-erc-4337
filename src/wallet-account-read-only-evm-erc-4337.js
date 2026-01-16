@@ -18,7 +18,7 @@ import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 
 import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
-import { Safe4337Pack, GenericFeeEstimator } from '@wdk-safe-global/relay-kit'
+import { Safe4337Pack, GenericFeeEstimator, PimlicoFeeEstimator } from '@wdk-safe-global/relay-kit'
 
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
@@ -32,7 +32,7 @@ import { Safe4337Pack, GenericFeeEstimator } from '@wdk-safe-global/relay-kit'
 /** @typedef {import('@tetherto/wdk-wallet-evm').EvmTransactionReceipt} EvmTransactionReceipt */
 
 /**
- * @typedef {Object} EvmErc4337WalletConfig
+ * @typedef {Object} EvmErc4337WalletCommonConfig
  * @property {number} chainId - The blockchain's id (e.g., 1 for ethereum).
  * @property {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
  * @property {string} bundlerUrl - The url of the bundler service.
@@ -40,9 +40,24 @@ import { Safe4337Pack, GenericFeeEstimator } from '@wdk-safe-global/relay-kit'
  * @property {string} paymasterAddress - The address of the paymaster smart contract.
  * @property {string} entryPointAddress - The address of the entry point smart contract.
  * @property {string} safeModulesVersion - The safe modules version.
+ */
+
+/**
+ * @typedef {Object} EvmErc4337WalletPaymasterTokenConfig
+ * @property {false} [isSponsored] - Whether the transaction is sponsored.
  * @property {Object} paymasterToken - The paymaster token configuration.
  * @property {string} paymasterToken.address - The address of the paymaster token.
  * @property {number | bigint} [transferMaxFee] - The maximum fee amount for transfer operations.
+ */
+
+/**
+ * @typedef {Object} EvmErc4337WalletSponsorshipPolicyConfig
+ * @property {true} isSponsored - Whether the transaction is sponsored.
+ * @property {string} sponsorshipPolicyId - The sponsorship policy id.
+ */
+
+/**
+ * @typedef {EvmErc4337WalletCommonConfig & (EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig)} EvmErc4337WalletConfig
  */
 
 export const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
@@ -137,6 +152,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   async getPaymasterTokenBalance () {
     const { paymasterToken } = this._config
 
+    if (!paymasterToken) {
+      throw new Error('Paymaster token is not configured.')
+    }
+
     return await this.getTokenBalance(paymasterToken.address)
   }
 
@@ -144,11 +163,15 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Quotes the costs of a send transaction operation.
    *
    * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
-   * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken'>} [config] - If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
+   * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | Pick<EvmErc4337WalletSponsorshipPolicyConfig, 'isSponsored'>} [config] - If set, overrides the 'paymasterToken' and 'isSponsored' options defined in the wallet account configuration.
    * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
    */
   async quoteSendTransaction (tx, config) {
-    const { paymasterToken } = config ?? this._config
+    const { paymasterToken, isSponsored } = config ?? this._config
+
+    if (isSponsored) {
+      return { fee: 0n }
+    }
 
     const fee = await this._getUserOperationGasCost([tx].flat(), {
       paymasterTokenAddress: paymasterToken.address,
@@ -162,8 +185,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Quotes the costs of a transfer operation.
    *
    * @param {TransferOptions} options - The transfer's options.
-   * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken'>} [config] -  If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
-   * @returns {Promise<Omit<TransferResult, 'hash'>>} The transfer's quotes.
+   * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | Pick<EvmErc4337WalletSponsorshipPolicyConfig, 'isSponsored'>} [config] - If set, overrides the 'paymasterToken' and 'isSponsored' options defined in the wallet account configuration.
    */
   async quoteTransfer (options, config) {
     const tx = await WalletAccountReadOnlyEvm._getTransferTransaction(options)
@@ -240,7 +262,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
         paymasterOptions: {
           paymasterUrl: this._config.paymasterUrl,
           paymasterAddress: this._config.paymasterAddress,
-          paymasterTokenAddress: this._config.paymasterToken.address,
+          paymasterTokenAddress: this._config.paymasterToken?.address,
           skipApproveTransaction: true
         },
         customContracts: {
@@ -282,12 +304,19 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   /** @private */
   async _getFeeEstimator () {
     if (!this._feeEstimator) {
-      const chainId = await this._getChainId()
+      const { bundlerUrl } = this._config
+      const isPimlico = bundlerUrl?.includes('pimlico')
 
-      this._feeEstimator = new GenericFeeEstimator(
-        this._config.provider,
-        `0x${chainId.toString(16)}`
-      )
+      if (isPimlico) {
+        this._feeEstimator = new PimlicoFeeEstimator()
+      } else {
+        const chainId = await this._getChainId()
+
+        this._feeEstimator = new GenericFeeEstimator(
+          this._config.provider,
+          `0x${chainId.toString(16)}`
+        )
+      }
     }
 
     return this._feeEstimator

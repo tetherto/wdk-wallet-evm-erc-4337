@@ -36,28 +36,37 @@ import { Safe4337Pack, GenericFeeEstimator, PimlicoFeeEstimator } from '@tethert
  * @property {number} chainId - The blockchain's id (e.g., 1 for ethereum).
  * @property {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
  * @property {string} bundlerUrl - The url of the bundler service.
- * @property {string} paymasterUrl - The url of the paymaster service.
- * @property {string} paymasterAddress - The address of the paymaster smart contract.
  * @property {string} entryPointAddress - The address of the entry point smart contract.
  * @property {string} safeModulesVersion - The safe modules version.
  */
 
 /**
  * @typedef {Object} EvmErc4337WalletPaymasterTokenConfig
- * @property {false} [isSponsored] - Whether the transaction is sponsored.
- * @property {Object | null} paymasterToken - The paymaster token configuration.
- * @property {string} paymasterToken.address - The address of the paymaster token.
+ * @property {false} [isSponsored] - Whether the paymaster is sponsoring the account.
+ * @property {false} [useNativeCoins] - Whether to use native coins instead of a paymaster to pay for gas fees.
+ * @property {string} paymasterUrl - The url of the paymaster service.
+ * @property {string} paymasterAddress - The address of the paymaster smart contract.
+ * @property {string | null} paymasterTokenAddress - The paymaster token address.
  * @property {number | bigint} [transferMaxFee] - The maximum fee amount for transfer operations.
  */
 
 /**
  * @typedef {Object} EvmErc4337WalletSponsorshipPolicyConfig
- * @property {true} isSponsored - Whether the transaction is sponsored.
- * @property {string} sponsorshipPolicyId - The sponsorship policy id.
+ * @property {true} isSponsored - Whether the paymaster is sponsoring the account.
+ * @property {false} [useNativeCoins] - Whether to use native coins instead of a paymaster to pay for gas fees.
+ * @property {string} paymasterUrl - The url of the paymaster service.
+ * @property {string} [sponsorshipPolicyId] - The sponsorship policy id.
  */
 
 /**
- * @typedef {EvmErc4337WalletCommonConfig & (EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig)} EvmErc4337WalletConfig
+ * @typedef {Object} EvmErc4337WalletNativeCoinsConfig
+ * @property {false} [isSponsored] - Whether the paymaster is sponsoring the account.
+ * @property {true} useNativeCoins - Whether to use native coins instead of a paymaster to pay for gas fees.
+ * @property {number | bigint} [transferMaxFee] - The maximum fee amount for transfer operations.
+ */
+
+/**
+ * @typedef {EvmErc4337WalletCommonConfig & (EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig)} EvmErc4337WalletConfig
  */
 
 export const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
@@ -159,38 +168,34 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<bigint>} The paymaster token balance (in base unit).
    */
   async getPaymasterTokenBalance () {
-    const { paymasterToken } = this._config
+    const { paymasterTokenAddress } = this._config
 
-    if (paymasterToken === null) {
-      return await this.getBalance()
-    }
-
-    if (!paymasterToken) {
+    if (!paymasterTokenAddress) {
       throw new Error('Paymaster token is not configured.')
     }
 
-    return await this.getTokenBalance(paymasterToken.address)
+    return await this.getTokenBalance(paymasterTokenAddress)
   }
 
   /**
    * Quotes the costs of a send transaction operation.
    *
    * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
-   * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | Pick<EvmErc4337WalletSponsorshipPolicyConfig, 'isSponsored'>} [config] - If set, overrides the 'paymasterToken' and 'isSponsored' options defined in the wallet account configuration.
+   * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
    */
   async quoteSendTransaction (tx, config) {
-    const { paymasterToken, isSponsored } = config ?? this._config
+    const { isSponsored, useNativeCoins, paymasterTokenAddress } = { ...this._config, ...config }
 
     if (isSponsored) {
       return { fee: 0n }
     }
 
-    const usePaymaster = isSponsored || paymasterToken !== null
+    const usePaymaster = !useNativeCoins
 
     const fee = await this._getUserOperationGasCost([tx].flat(), {
-      paymasterTokenAddress: paymasterToken === null ? undefined : paymasterToken.address,
-      amountToApprove: paymasterToken === null ? 0n : BigInt(Number.MAX_SAFE_INTEGER)
+      paymasterTokenAddress,
+      amountToApprove: useNativeCoins ? 0n : BigInt(Number.MAX_SAFE_INTEGER)
     }, usePaymaster)
 
     return { fee: BigInt(fee) }
@@ -200,7 +205,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Quotes the costs of a transfer operation.
    *
    * @param {TransferOptions} options - The transfer's options.
-   * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | Pick<EvmErc4337WalletSponsorshipPolicyConfig, 'isSponsored'>} [config] - If set, overrides the 'paymasterToken' and 'isSponsored' options defined in the wallet account configuration.
+   * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<Omit<TransferResult, 'hash'>>} The transfer's quotes.
    */
   async quoteTransfer (options, config) {
@@ -310,7 +315,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
         paymasterOptions: {
           paymasterUrl: this._config.paymasterUrl,
           paymasterAddress: this._config.paymasterAddress,
-          paymasterTokenAddress: this._config.paymasterToken?.address,
+          paymasterTokenAddress: this._config.paymasterTokenAddress,
           skipApproveTransaction: true
         },
         customContracts: {

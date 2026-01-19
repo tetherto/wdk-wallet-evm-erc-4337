@@ -37,6 +37,7 @@ import WalletAccountReadOnlyEvmErc4337, { SALT_NONCE } from './wallet-account-re
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletPaymasterTokenConfig} EvmErc4337WalletPaymasterTokenConfig */
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletSponsorshipPolicyConfig} EvmErc4337WalletSponsorshipPolicyConfig */
+/** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletNativeCoinsConfig} EvmErc4337WalletNativeCoinsConfig */
 
 const FEE_TOLERANCE_COEFFICIENT = 120n
 
@@ -145,21 +146,21 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * Sends a transaction.
    *
    * @param {EvmTransaction | EvmTransaction[]} tx -  The transaction, or an array of multiple transactions to send in batch.
-   * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | EvmErc4337WalletSponsorshipPolicyConfig} [config] - If set, overrides the 'paymasterToken', 'isSponsored', and 'sponsorshipPolicyId' options defined in the wallet account configuration.
+   * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<TransactionResult>} The transaction's result.
    */
   async sendTransaction (tx, config) {
-    const { paymasterToken, isSponsored, sponsorshipPolicyId } = config ?? this._config
+    const { isSponsored, useNativeCoins, paymasterTokenAddress, sponsorshipPolicyId } = { ...this._config, ...config }
 
     const { fee } = await this.quoteSendTransaction(tx, config)
 
-    const amountToApprove = isSponsored ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
+    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
 
     const hash = await this._sendUserOperation([tx].flat(), {
       isSponsored,
-      paymasterTokenAddress: isSponsored ? undefined : paymasterToken?.address,
+      paymasterTokenAddress: (isSponsored || useNativeCoins) ? undefined : paymasterTokenAddress,
       sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined,
-      amountToApprove: paymasterToken === null ? 0n : amountToApprove
+      amountToApprove
     })
 
     return { hash, fee }
@@ -169,27 +170,27 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * Transfers a token to another address.
    *
    * @param {TransferOptions} options - The transfer's options.
-   * @param {EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig} [config] - If set, overrides the 'paymasterToken', 'isSponsored', 'sponsorshipPolicyId', and 'transferMaxFee' options defined in the wallet account configuration.
+   * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<TransferResult>} The transfer's result.
    */
   async transfer (options, config) {
-    const { paymasterToken, transferMaxFee, isSponsored, sponsorshipPolicyId } = config ?? this._config
+    const { isSponsored, useNativeCoins, paymasterTokenAddress, transferMaxFee, sponsorshipPolicyId } = { ...this._config, ...config }
 
     const tx = await WalletAccountEvm._getTransferTransaction(options)
 
     const { fee } = await this.quoteSendTransaction(tx, config)
 
-    if (!isSponsored && paymasterToken !== null && transferMaxFee !== undefined && fee >= transferMaxFee) {
+    if (!isSponsored && !useNativeCoins && transferMaxFee !== undefined && fee >= transferMaxFee) {
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
 
-    const amountToApprove = isSponsored ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
+    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
 
     const hash = await this._sendUserOperation([tx], {
       isSponsored,
-      paymasterTokenAddress: isSponsored ? undefined : paymasterToken?.address,
+      paymasterTokenAddress: (isSponsored || useNativeCoins) ? undefined : paymasterTokenAddress,
       sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined,
-      amountToApprove: paymasterToken === null ? 0n : amountToApprove
+      amountToApprove
     })
 
     return { hash, fee }
@@ -254,7 +255,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
         paymasterOptions: {
           paymasterUrl: this._config.paymasterUrl,
           paymasterAddress: this._config.paymasterAddress,
-          paymasterTokenAddress: this._config.paymasterToken?.address,
+          paymasterTokenAddress: this._config.paymasterTokenAddress,
           skipApproveTransaction: true
         },
         customContracts: {

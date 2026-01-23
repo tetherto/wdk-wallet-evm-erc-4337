@@ -104,21 +104,36 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     this._chainId = undefined
 
+    /**
+     * The predicted safe address (cached).
+     *
+     * @private
+     * @type {string | undefined}
+     */
+    this._predictedAddress = undefined
+
     /** @private */
     this._ownerAccountAddress = address
   }
 
   /**
    * Returns the account's address.
+   * Uses local CREATE2 address prediction without making network calls.
    *
    * @returns {Promise<string>} The account's address.
    */
   async getAddress () {
-    const safe4337pack = await this._getSafe4337Pack()
+    if (!this._predictedAddress) {
+      this._predictedAddress = Safe4337Pack.predictSafeAddress({
+        threshold: 1,
+        owners: [this._ownerAccountAddress],
+        saltNonce: SALT_NONCE,
+        chainId: this._config.chainId,
+        safeModulesVersion: this._config.safeModulesVersion
+      })
+    }
 
-    const address = await safe4337pack.protocolKit.getAddress()
-
-    return address
+    return this._predictedAddress
   }
 
   /**

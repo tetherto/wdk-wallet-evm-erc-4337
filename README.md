@@ -587,10 +587,31 @@ new WalletAccountReadOnlyEvmErc4337(address, config)
 
 | Method | Description | Returns |
 |--------|-------------|---------|
+| `predictSafeAddress(owner, config)` | Static method to predict Safe address for an EOA | `string` |
 | `getBalance()` | Returns the native token balance (in wei) | `Promise<bigint>` |
 | `getTokenBalance(tokenAddress)` | Returns the balance of a specific ERC20 token | `Promise<bigint>` |
 | `quoteSendTransaction(tx)` | Estimates the fee for a UserOperation | `Promise<{fee: bigint}>` |
 | `quoteTransfer(options)` | Estimates the fee for an ERC20 transfer | `Promise<{fee: bigint}>` |
+
+##### `predictSafeAddress(owner, config)` (static)
+Predicts the Safe smart contract address for a given EOA owner without requiring network calls.
+
+**Parameters:**
+- `owner` (string): The EOA address that will own the Safe
+- `config` (object): Configuration object
+  - `chainId` (number): Chain ID of the target network
+  - `safeModulesVersion` (string, optional): Safe modules version (e.g., "0.3.0")
+
+**Returns:** `string` - The predicted Safe address
+
+**Example:**
+```javascript
+const safeAddress = WalletAccountReadOnlyEvmErc4337.predictSafeAddress(
+  '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
+  { chainId: 1, safeModulesVersion: '0.3.0' }
+)
+console.log('Predicted Safe address:', safeAddress)
+```
 
 ##### `getBalance()`
 Returns the smart contract wallet's native token balance (e.g., ETH, MATIC, etc.) in wei.

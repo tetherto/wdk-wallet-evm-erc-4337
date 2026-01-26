@@ -102,7 +102,9 @@ describe('WalletAccountReadOnlyEvmErc4337', async ({
 
       await expect(async () => {
         await account.getBalance()
-      }).rejects(/No URL was provided to the Transport\./)
+      }).rejects(
+        /The wallet must be connected to a provider to retrieve balances\./,
+      )
     })
   })
 

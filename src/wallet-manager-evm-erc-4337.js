@@ -35,7 +35,7 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    * @param {string | Uint8Array} seed - The wallet's [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
    * @param {EvmErc4337WalletConfig} config - The configuration object.
    */
-  constructor (seed, config) {
+  constructor(seed, config) {
     super(seed, config)
 
     /**
@@ -46,18 +46,37 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
      */
     this._config = config
 
-    const { provider } = config
+    /**
+     * An ethers provider to interact with a node of the blockchain.
+     *
+     * @protected
+     * @type {Provider | undefined}
+     */
+    this._provider = undefined
 
-    if (provider) {
-      /**
-       * An ethers provider to interact with a node of the blockchain.
-       *
-       * @protected
-       * @type {Provider | undefined}
-       */
-      this._provider = typeof provider === 'string'
-        ? new JsonRpcProvider(provider)
-        : new BrowserProvider(provider)
+    const { provider, retries = 3 } = config
+
+    if (Array.isArray(provider)) {
+      this._provider = provider
+        .reduce(
+          /**
+           * @param {FailoverProvider<Provider>} failover
+           * @param {string | Eip1193Provider} provider
+           */
+          (failover, provider) =>
+            failover.addProvider(
+              typeof provider === 'string'
+                ? new JsonRpcProvider(provider)
+                : new BrowserProvider(provider),
+            ),
+          new FailoverProvider({ retries }),
+        )
+        .initialize()
+    } else if (provider) {
+      this._provider =
+        typeof provider === 'string'
+          ? new JsonRpcProvider(provider)
+          : new BrowserProvider(provider)
     }
   }
 
@@ -70,7 +89,7 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    * @param {number} [index] - The index of the account to get (default: 0).
    * @returns {Promise<WalletAccountEvmErc4337>} The account.
    */
-  async getAccount (index = 0) {
+  async getAccount(index = 0) {
     return await this.getAccountByPath(`0'/0/${index}`)
   }
 
@@ -83,7 +102,7 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    * @param {string} path - The derivation path (e.g. "0'/0/0").
    * @returns {Promise<WalletAccountEvmErc4337>} The account.
    */
-  async getAccountByPath (path) {
+  async getAccountByPath(path) {
     if (!this._accounts[path]) {
       const account = new WalletAccountEvmErc4337(this.seed, path, this._config)
 
@@ -98,16 +117,19 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    *
    * @returns {Promise<FeeRates>} The fee rates (in weis).
    */
-  async getFeeRates () {
+  async getFeeRates() {
     if (!this._provider) {
-      throw new Error('The wallet must be connected to a provider to get fee rates.')
+      throw new Error(
+        'The wallet must be connected to a provider to get fee rates.',
+      )
     }
 
     const { maxFeePerGas } = await this._provider.getFeeData()
 
     return {
-      normal: maxFeePerGas * WalletManagerEvm._FEE_RATE_NORMAL_MULTIPLIER / 100n,
-      fast: maxFeePerGas * WalletManagerEvm._FEE_RATE_FAST_MULTIPLIER / 100n
+      normal:
+        (maxFeePerGas * WalletManagerEvm._FEE_RATE_NORMAL_MULTIPLIER) / 100n,
+      fast: (maxFeePerGas * WalletManagerEvm._FEE_RATE_FAST_MULTIPLIER) / 100n,
     }
   }
 }

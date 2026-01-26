@@ -14,11 +14,15 @@
 
 'use strict'
 
+import { BrowserProvider, JsonRpcProvider } from 'ethers'
+
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 
 import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
 import { Safe4337Pack, GenericFeeEstimator } from '@wdk-safe-global/relay-kit'
+
+import FailoverProvider from 'wdk-failover-provider'
 
 /** @typedef {import('ethers').AbstractProvider} Provider */
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */

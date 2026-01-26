@@ -22,6 +22,8 @@ import { BrowserProvider, JsonRpcProvider } from 'ethers'
 
 import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
 
+import FailoverProvider from 'wdk-failover-provider'
+
 /** @typedef {import('ethers').Provider} Provider */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').FeeRates} FeeRates */
@@ -104,7 +106,11 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    */
   async getAccountByPath (path) {
     if (!this._accounts[path]) {
-      const account = new WalletAccountEvmErc4337(this.seed, path, this._config)
+      const account = new WalletAccountEvmErc4337(
+        this.seed,
+        path,
+        this._config
+      )
 
       this._accounts[path] = account
     }

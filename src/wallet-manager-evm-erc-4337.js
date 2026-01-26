@@ -46,18 +46,37 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
      */
     this._config = config
 
-    const { provider } = config
+    /**
+     * An ethers provider to interact with a node of the blockchain.
+     *
+     * @protected
+     * @type {Provider | undefined}
+     */
+    this._provider = undefined
 
-    if (provider) {
-      /**
-       * An ethers provider to interact with a node of the blockchain.
-       *
-       * @protected
-       * @type {Provider | undefined}
-       */
-      this._provider = typeof provider === 'string'
-        ? new JsonRpcProvider(provider)
-        : new BrowserProvider(provider)
+    const { provider, retries = 3 } = config
+
+    if (Array.isArray(provider)) {
+      this._provider = provider
+        .reduce(
+          /**
+           * @param {FailoverProvider<Provider>} failover
+           * @param {string | Eip1193Provider} provider
+           */
+          (failover, provider) =>
+            failover.addProvider(
+              typeof provider === 'string'
+                ? new JsonRpcProvider(provider)
+                : new BrowserProvider(provider)
+            ),
+          new FailoverProvider({ retries })
+        )
+        .initialize()
+    } else if (provider) {
+      this._provider =
+        typeof provider === 'string'
+          ? new JsonRpcProvider(provider)
+          : new BrowserProvider(provider)
     }
   }
 
@@ -100,14 +119,17 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    */
   async getFeeRates () {
     if (!this._provider) {
-      throw new Error('The wallet must be connected to a provider to get fee rates.')
+      throw new Error(
+        'The wallet must be connected to a provider to get fee rates.'
+      )
     }
 
     const { maxFeePerGas } = await this._provider.getFeeData()
 
     return {
-      normal: maxFeePerGas * WalletManagerEvm._FEE_RATE_NORMAL_MULTIPLIER / 100n,
-      fast: maxFeePerGas * WalletManagerEvm._FEE_RATE_FAST_MULTIPLIER / 100n
+      normal:
+        (maxFeePerGas * WalletManagerEvm._FEE_RATE_NORMAL_MULTIPLIER) / 100n,
+      fast: (maxFeePerGas * WalletManagerEvm._FEE_RATE_FAST_MULTIPLIER) / 100n
     }
   }
 }

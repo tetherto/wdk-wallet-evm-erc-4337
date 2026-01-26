@@ -33,7 +33,8 @@
     "@tetherto/wdk-wallet-evm": "^1.0.0-beta.3",
     "@wdk-safe-global/relay-kit": "4.1.4",
     "bare-node-runtime": "^1.1.4",
-    "ethers": "6.14.4"
+    "ethers": "6.14.4",
+    "wdk-failover-provider": "^1.0.0"
   },
   "devDependencies": {
     "@pimlico/alto": "0.0.19",

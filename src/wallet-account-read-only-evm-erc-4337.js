@@ -20,6 +20,7 @@ import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
 import { Safe4337Pack, GenericFeeEstimator } from '@wdk-safe-global/relay-kit'
 
+/** @typedef {import('ethers').AbstractProvider} Provider */
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').EvmTransaction} EvmTransaction */
@@ -32,7 +33,8 @@ import { Safe4337Pack, GenericFeeEstimator } from '@wdk-safe-global/relay-kit'
 /**
  * @typedef {Object} EvmErc4337WalletConfig
  * @property {number} chainId - The blockchain's id (e.g., 1 for ethereum).
- * @property {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
+ * @property {string | Eip1193Provider | Array<string | Eip1193Provider>} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
+ * @property {number} [retries] - The number of retries in the failover mechanism.
  * @property {string} bundlerUrl - The url of the bundler service.
  * @property {string} paymasterUrl - The url of the paymaster service.
  * @property {string} paymasterAddress - The address of the paymaster smart contract.
@@ -43,7 +45,8 @@ import { Safe4337Pack, GenericFeeEstimator } from '@wdk-safe-global/relay-kit'
  * @property {number | bigint} [transferMaxFee] - The maximum fee amount for transfer operations.
  */
 
-export const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
+export const SALT_NONCE =
+  '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
 
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
   /**
@@ -53,7 +56,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
    */
   constructor (address, config) {
-    const safeAddress = WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config)
+    const safeAddress = WalletAccountReadOnlyEvmErc4337.predictSafeAddress(
+      address,
+      config
+    )
 
     super(safeAddress)
 
@@ -91,6 +97,39 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
     /** @private */
     this._ownerAccountAddress = address
+
+    /**
+     * An ethers provider to interact with a node of the blockchain.
+     *
+     * @protected
+     * @type {Provider | undefined}
+     */
+    this._provider = undefined
+
+    const { provider, retries = 3 } = config
+
+    if (Array.isArray(provider)) {
+      this._provider = provider
+        .reduce(
+          /**
+           * @param {FailoverProvider<Provider>} failover
+           * @param {string | Eip1193Provider} provider
+           */
+          (failover, provider) =>
+            failover.addProvider(
+              typeof provider === 'string'
+                ? new JsonRpcProvider(provider)
+                : new BrowserProvider(provider)
+            ),
+          new FailoverProvider({ retries })
+        )
+        .initialize()
+    } else if (provider) {
+      this._provider =
+        typeof provider === 'string'
+          ? new JsonRpcProvider(provider)
+          : new BrowserProvider(provider)
+    }
   }
 
   /**
@@ -197,7 +236,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       return null
     }
 
-    return await evmReadOnlyAccount.getTransactionReceipt(userOp.transactionHash)
+    return await evmReadOnlyAccount.getTransactionReceipt(
+      userOp.transactionHash
+    )
   }
 
   /**
@@ -221,7 +262,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   async _getSafe4337Pack () {
     if (!this._safe4337Pack) {
       this._safe4337Pack = await Safe4337Pack.init({
-        provider: this._config.provider,
+        provider: this._provider,
         bundlerUrl: this._config.bundlerUrl,
         safeModulesVersion: this._config.safeModulesVersion,
         options: {
@@ -266,7 +307,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   async _getEvmReadOnlyAccount () {
     const address = await this.getAddress()
 
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(address, this._config)
+    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(
+      address,
+      this._config
+    )
 
     return evmReadOnlyAccount
   }
@@ -277,7 +321,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       const chainId = await this._getChainId()
 
       this._feeEstimator = new GenericFeeEstimator(
-        this._config.provider,
+        this.provider,
         `0x${chainId.toString(16)}`
       )
     }
@@ -293,7 +337,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
     try {
       const safeOperation = await safe4337Pack.createTransaction({
-        transactions: txs.map(tx => ({ from: address, ...tx })),
+        transactions: txs.map((tx) => ({ from: address, ...tx })),
         options: {
           feeEstimator: await this._getFeeEstimator(),
           ...options
@@ -309,16 +353,29 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
         maxFeePerGas
       } = safeOperation.userOperation
 
-      const gasCost = Number((callGasLimit + verificationGasLimit + preVerificationGas + paymasterVerificationGasLimit + paymasterPostOpGasLimit) * maxFeePerGas)
+      const gasCost = Number(
+        (callGasLimit +
+          verificationGasLimit +
+          preVerificationGas +
+          paymasterVerificationGasLimit +
+          paymasterPostOpGasLimit) *
+          maxFeePerGas
+      )
 
-      const exchangeRate = await safe4337Pack.getTokenExchangeRate(options.paymasterTokenAddress)
+      const exchangeRate = await safe4337Pack.getTokenExchangeRate(
+        options.paymasterTokenAddress
+      )
 
-      const gasCostInPaymasterToken = Math.ceil(gasCost * exchangeRate / 10 ** 18)
+      const gasCostInPaymasterToken = Math.ceil(
+        (gasCost * exchangeRate) / 10 ** 18
+      )
 
       return gasCostInPaymasterToken
     } catch (error) {
       if (error.message.includes('AA50')) {
-        throw new Error('Simulation failed: not enough funds in the safe account to repay the paymaster.')
+        throw new Error(
+          'Simulation failed: not enough funds in the safe account to repay the paymaster.'
+        )
       }
 
       throw error

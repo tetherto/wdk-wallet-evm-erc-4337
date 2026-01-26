@@ -14,7 +14,7 @@
 
 'use strict'
 
-import { BrowserProvider, JsonRpcProvider } from 'ethers'
+import { JsonRpcProvider } from 'ethers'
 
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 
@@ -24,7 +24,6 @@ import { Safe4337Pack, GenericFeeEstimator } from '@wdk-safe-global/relay-kit'
 
 import FailoverProvider from 'wdk-failover-provider'
 
-/** @typedef {import('ethers').AbstractProvider} Provider */
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').EvmTransaction} EvmTransaction */
@@ -105,34 +104,47 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     /**
      * An ethers provider to interact with a node of the blockchain.
      *
+     * Note that we use Eip1193Provider instead of AbstractProvider because Safe4337Pack cannot work with AbstractProvider.
+     *
      * @protected
-     * @type {Provider | undefined}
+     * @type {Eip1193Provider | undefined}
      */
     this._provider = undefined
 
     const { provider, retries = 3 } = config
 
+    /**
+     * Wrap string (i.e. JsonRpcProvider) and Eip1193Provider to Eip1193Provider
+     * @param {string | Eip1193Provider} provider
+     * @returns
+     */
+    function wrapEip1193Provider (provider) {
+      return typeof provider === 'string'
+        ? {
+            provider: new JsonRpcProvider(provider),
+            request ({ method, params }) {
+              return this.provider.send(method, params ?? [])
+            }
+          }
+        : provider
+    }
+
     if (Array.isArray(provider)) {
       this._provider = provider
         .reduce(
           /**
-           * @param {FailoverProvider<Provider>} failover
+           * @param {FailoverProvider<Eip1193Provider>} failover
            * @param {string | Eip1193Provider} provider
            */
           (failover, provider) =>
-            failover.addProvider(
-              typeof provider === 'string'
-                ? new JsonRpcProvider(provider)
-                : new BrowserProvider(provider)
-            ),
+            failover.addProvider(wrapEip1193Provider(provider)),
           new FailoverProvider({ retries })
         )
         .initialize()
     } else if (provider) {
-      this._provider =
-        typeof provider === 'string'
-          ? new JsonRpcProvider(provider)
-          : new BrowserProvider(provider)
+      this._provider = wrapEip1193Provider(provider)
+    } else {
+      this._provider = undefined
     }
   }
 
@@ -325,7 +337,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       const chainId = await this._getChainId()
 
       this._feeEstimator = new GenericFeeEstimator(
-        this.provider,
+        this._provider,
         `0x${chainId.toString(16)}`
       )
     }

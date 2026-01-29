@@ -46,7 +46,7 @@ import { Safe4337Pack, GenericFeeEstimator, PimlicoFeeEstimator } from '@tethert
  * @property {false} [useNativeCoins] - Whether to use native coins instead of a paymaster to pay for gas fees.
  * @property {string} paymasterUrl - The url of the paymaster service.
  * @property {string} paymasterAddress - The address of the paymaster smart contract.
- * @property {Object | null} paymasterToken - The paymaster token configuration.
+ * @property {Object} paymasterToken - The paymaster token configuration.
  * @property {string} paymasterToken.address - The address of the paymaster token.
  * @property {number | bigint} [transferMaxFee] - The maximum fee amount for transfer operations.
  */

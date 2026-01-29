@@ -167,7 +167,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       paymasterTokenAddress: (isSponsored || useNativeCoins) ? undefined : paymasterToken?.address,
       sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined,
       amountToApprove
-    })
+    }, mergedConfig)
 
     return { hash, fee }
   }
@@ -203,7 +203,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       paymasterTokenAddress: (isSponsored || useNativeCoins) ? undefined : paymasterToken?.address,
       sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined,
       amountToApprove
-    })
+    }, mergedConfig)
 
     return { hash, fee }
   }
@@ -228,61 +228,58 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     this._ownerAccount.dispose()
   }
 
-  async _getSafe4337Pack (usePaymaster = true) {
-    if (!usePaymaster) {
-      if (!this._nativeSafe4337Pack) {
-        const owner = await this._ownerAccount.getAddress()
+  async _getSafe4337Pack (config) {
+    const { isSponsored, useNativeCoins, paymasterUrl, paymasterAddress, paymasterToken } = config
 
-        this._nativeSafe4337Pack = await Safe4337Pack.init({
-          provider: this._config.provider,
-          signer: this._ownerAccount._account,
-          bundlerUrl: this._config.bundlerUrl,
-          safeModulesVersion: this._config.safeModulesVersion,
-          options: {
-            owners: [owner],
-            threshold: 1,
-            saltNonce: SALT_NONCE
-          },
-          customContracts: {
-            entryPointAddress: this._config.entryPointAddress
-          }
-        })
+    let cacheKey
+    if (useNativeCoins) {
+      cacheKey = 'native'
+    } else if (isSponsored) {
+      cacheKey = `sponsored:${paymasterUrl}`
+    } else {
+      cacheKey = `paymaster:${paymasterUrl}:${paymasterAddress}:${paymasterToken?.address}`
+    }
+
+    if (this._safe4337Packs.has(cacheKey)) {
+      return this._safe4337Packs.get(cacheKey)
+    }
+
+    const owner = await this._ownerAccount.getAddress()
+
+    const initOptions = {
+      provider: config.provider,
+      signer: this._ownerAccount._account,
+      bundlerUrl: config.bundlerUrl,
+      safeModulesVersion: config.safeModulesVersion,
+      options: {
+        owners: [owner],
+        threshold: 1,
+        saltNonce: SALT_NONCE
+      },
+      customContracts: {
+        entryPointAddress: config.entryPointAddress
       }
-      return this._nativeSafe4337Pack
     }
 
-    if (!this._safe4337Pack) {
-      const owner = await this._ownerAccount.getAddress()
-
-      this._safe4337Pack = await Safe4337Pack.init({
-        provider: this._config.provider,
-        signer: this._ownerAccount._account,
-        bundlerUrl: this._config.bundlerUrl,
-        safeModulesVersion: this._config.safeModulesVersion,
-        options: {
-          owners: [owner],
-          threshold: 1,
-          saltNonce: SALT_NONCE
-        },
-        paymasterOptions: {
-          paymasterUrl: this._config.paymasterUrl,
-          paymasterAddress: this._config.paymasterAddress,
-          paymasterTokenAddress: this._config.paymasterToken?.address,
-          skipApproveTransaction: true
-        },
-        customContracts: {
-          entryPointAddress: this._config.entryPointAddress
-        }
-      })
+    if (!useNativeCoins) {
+      initOptions.paymasterOptions = {
+        paymasterUrl,
+        paymasterAddress,
+        paymasterTokenAddress: paymasterToken?.address,
+        skipApproveTransaction: true
+      }
     }
 
-    return this._safe4337Pack
+    const safe4337Pack = await Safe4337Pack.init(initOptions)
+
+    this._safe4337Packs.set(cacheKey, safe4337Pack)
+
+    return safe4337Pack
   }
 
   /** @private */
-  async _sendUserOperation (txs, options) {
-    const usePaymaster = options.isSponsored || options.paymasterTokenAddress !== undefined
-    const safe4337Pack = await this._getSafe4337Pack(usePaymaster)
+  async _sendUserOperation (txs, options, config) {
+    const safe4337Pack = await this._getSafe4337Pack(config)
 
     const address = await this.getAddress()
 

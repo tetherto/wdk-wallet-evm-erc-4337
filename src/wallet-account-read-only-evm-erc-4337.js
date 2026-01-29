@@ -93,12 +93,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     this._config = config
 
     /**
-     * The safe's implementation of the erc-4337 standard.
+     * Map of Safe4337Pack instances cached by configuration.
      *
      * @protected
-     * @type {Safe4337Pack | undefined}
+     * @type {Map<string, Safe4337Pack>}
      */
-    this._safe4337Pack = undefined
+    this._safe4337Packs = new Map()
 
     /**
      * The safe's fee estimator.
@@ -198,12 +198,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       return { fee: 0n }
     }
 
-    const usePaymaster = !useNativeCoins
-
     const fee = await this._getUserOperationGasCost([tx].flat(), {
       paymasterTokenAddress: useNativeCoins ? undefined : paymasterToken?.address,
       amountToApprove: useNativeCoins ? 0n : BigInt(Number.MAX_SAFE_INTEGER)
-    }, usePaymaster)
+    }, mergedConfig)
 
     return { fee: BigInt(fee) }
   }
@@ -230,7 +228,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<EvmTransactionReceipt | null>} – The receipt, or null if the transaction has not been included in a block yet.
    */
   async getTransactionReceipt (hash) {
-    const safe4337Pack = await this._getSafe4337Pack()
+    const safe4337Pack = await this._getSafe4337Pack(this._config)
 
     const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
 
@@ -250,7 +248,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<UserOperationReceipt | null>} – The receipt, or null if the user operation has not been included in a block yet.
    */
   async getUserOperationReceipt (hash) {
-    const safe4337Pack = await this._getSafe4337Pack()
+    const safe4337Pack = await this._getSafe4337Pack(this._config)
 
     const userOp = await safe4337Pack.getUserOperationReceipt(hash)
 
@@ -328,57 +326,58 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       }
     }
   }
-  }
 
   /**
    * Returns the safe's erc-4337 pack of the account.
    *
    * @protected
+   * @param {EvmErc4337WalletConfig} config - The configuration object.
    * @returns {Promise<Safe4337Pack>} The safe's erc-4337 pack.
    */
-  async _getSafe4337Pack (usePaymaster = true) {
-    if (!usePaymaster) {
-      if (!this._nativeSafe4337Pack) {
-        this._nativeSafe4337Pack = await Safe4337Pack.init({
-          provider: this._config.provider,
-          bundlerUrl: this._config.bundlerUrl,
-          safeModulesVersion: this._config.safeModulesVersion,
-          options: {
-            owners: [this._ownerAccountAddress],
-            threshold: 1,
-            saltNonce: SALT_NONCE
-          },
-          customContracts: {
-            entryPointAddress: this._config.entryPointAddress
-          }
-        })
+  async _getSafe4337Pack (config) {
+    const { isSponsored, useNativeCoins, paymasterUrl, paymasterAddress, paymasterToken } = config
+
+    let cacheKey
+    if (useNativeCoins) {
+      cacheKey = 'native'
+    } else if (isSponsored) {
+      cacheKey = `sponsored:${paymasterUrl}`
+    } else {
+      cacheKey = `paymaster:${paymasterUrl}:${paymasterAddress}:${paymasterToken?.address}`
+    }
+
+    if (this._safe4337Packs.has(cacheKey)) {
+      return this._safe4337Packs.get(cacheKey)
+    }
+
+    const initOptions = {
+      provider: config.provider,
+      bundlerUrl: config.bundlerUrl,
+      safeModulesVersion: config.safeModulesVersion,
+      options: {
+        owners: [this._ownerAccountAddress],
+        threshold: 1,
+        saltNonce: SALT_NONCE
+      },
+      customContracts: {
+        entryPointAddress: config.entryPointAddress
       }
-      return this._nativeSafe4337Pack
     }
 
-    if (!this._safe4337Pack) {
-      this._safe4337Pack = await Safe4337Pack.init({
-        provider: this._config.provider,
-        bundlerUrl: this._config.bundlerUrl,
-        safeModulesVersion: this._config.safeModulesVersion,
-        options: {
-          owners: [this._ownerAccountAddress],
-          threshold: 1,
-          saltNonce: SALT_NONCE
-        },
-        paymasterOptions: {
-          paymasterUrl: this._config.paymasterUrl,
-          paymasterAddress: this._config.paymasterAddress,
-          paymasterTokenAddress: this._config.paymasterToken?.address,
-          skipApproveTransaction: true
-        },
-        customContracts: {
-          entryPointAddress: this._config.entryPointAddress
-        }
-      })
+    if (!useNativeCoins) {
+      initOptions.paymasterOptions = {
+        paymasterUrl,
+        paymasterAddress,
+        paymasterTokenAddress: paymasterToken?.address,
+        skipApproveTransaction: true
+      }
     }
 
-    return this._safe4337Pack
+    const safe4337Pack = await Safe4337Pack.init(initOptions)
+
+    this._safe4337Packs.set(cacheKey, safe4337Pack)
+
+    return safe4337Pack
   }
 
   /**
@@ -430,8 +429,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /** @private */
-  async _getUserOperationGasCost (txs, options, usePaymaster = true) {
-    const safe4337Pack = await this._getSafe4337Pack(usePaymaster)
+  async _getUserOperationGasCost (txs, options, config) {
+    const safe4337Pack = await this._getSafe4337Pack(config)
 
     const address = await this.getAddress()
 

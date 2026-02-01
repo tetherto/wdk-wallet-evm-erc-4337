@@ -1,3 +1,4 @@
+
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
     /**
      * Creates a new read-only evm [erc-4337](https://www.erc4337.io/docs) wallet account.
@@ -59,18 +60,18 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * Quotes the costs of a send transaction operation.
      *
      * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
-     * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken'>} [config] - If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
+     * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | Pick<EvmErc4337WalletSponsorshipPolicyConfig, 'isSponsored'>} [config] - If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
      * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
      */
-    quoteSendTransaction(tx: EvmTransaction | EvmTransaction[], config?: Pick<EvmErc4337WalletConfig, "paymasterToken">): Promise<Omit<TransactionResult, "hash">>;
+    quoteSendTransaction(tx: EvmTransaction | EvmTransaction[], config?: Pick<EvmErc4337WalletPaymasterTokenConfig, "isSponsored" | "paymasterToken"> | Pick<EvmErc4337WalletSponsorshipPolicyConfig, "isSponsored">): Promise<Omit<TransactionResult, "hash">>;
     /**
      * Quotes the costs of a transfer operation.
      *
      * @param {TransferOptions} options - The transfer's options.
-     * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken'>} [config] -  If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
+     * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | EvmErc4337WalletSponsorshipPolicyConfig} [config] -  If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
      * @returns {Promise<Omit<TransferResult, 'hash'>>} The transfer's quotes.
      */
-    quoteTransfer(options: TransferOptions, config?: Pick<EvmErc4337WalletConfig, "paymasterToken">): Promise<Omit<TransferResult, "hash">>;
+    quoteTransfer(options: TransferOptions, config?: Pick<EvmErc4337WalletPaymasterTokenConfig, "isSponsored" | "paymasterToken"> | EvmErc4337WalletSponsorshipPolicyConfig): Promise<Omit<TransferResult, "hash">>;
     /**
      * Returns a transaction's receipt.
      *
@@ -87,7 +88,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     getUserOperationReceipt(hash: string): Promise<UserOperationReceipt | null>;
     /**
      * Returns the current allowance for the given token and spender.
-     * 
+     *
      * @param {string} token - The token's address.
      * @param {string} spender - The spender's address.
      * @returns {Promise<bigint>} - The allowance.
@@ -129,7 +130,7 @@ export type TransactionResult = import("@tetherto/wdk-wallet-evm").TransactionRe
 export type TransferOptions = import("@tetherto/wdk-wallet-evm").TransferOptions;
 export type TransferResult = import("@tetherto/wdk-wallet-evm").TransferResult;
 export type EvmTransactionReceipt = import("@tetherto/wdk-wallet-evm").EvmTransactionReceipt;
-export type EvmErc4337WalletConfig = {
+export type EvmErc4337WalletCommonConfig = {
     /**
      * - The blockchain's id (e.g., 1 for ethereum).
      */
@@ -158,10 +159,19 @@ export type EvmErc4337WalletConfig = {
      * - The safe modules version.
      */
     safeModulesVersion: string;
+};
+export type EvmErc4337WalletPaymasterTokenConfig = {
+    /**
+     * - Whether the transaction is sponsored.
+     */
+    isSponsored?: false;
     /**
      * - The paymaster token configuration.
      */
     paymasterToken: {
+        /**
+         * - The address of the paymaster token.
+         */
         address: string;
     };
     /**
@@ -169,5 +179,17 @@ export type EvmErc4337WalletConfig = {
      */
     transferMaxFee?: number | bigint;
 };
+export type EvmErc4337WalletSponsorshipPolicyConfig = {
+    /**
+     * - Whether the transaction is sponsored.
+     */
+    isSponsored: true;
+    /**
+     * - The sponsorship policy id.
+     */
+    sponsorshipPolicyId: string;
+};
+export type EvmErc4337WalletConfig = EvmErc4337WalletCommonConfig & (EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig);
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';
-import { GenericFeeEstimator, Safe4337Pack } from '@wdk-safe-global/relay-kit';
+import { Safe4337Pack } from '@wdk-safe-global/relay-kit';
+import { GenericFeeEstimator } from '@wdk-safe-global/relay-kit';

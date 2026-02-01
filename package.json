@@ -23,10 +23,10 @@
     "lint": "standard",
     "lint:fix": "standard --fix",
     "test": "npm run test:integration",
-    "test:integration-wait": "wait-on http://localhost:8545 && cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/integration",
-    "test:integration-wait:coverage": "wait-on http://localhost:8545 && cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/integration --coverage",
-    "test:integration": "concurrently -k -s first -n \"NODE,TEST\" -c \"black,green\" \"npx hardhat node > NUL 2>&1\" \"npm run test:integration-wait\"",
-    "test:integration:coverage": "concurrently -k -s first -n \"NODE,TEST\" -c \"black,green\" \"npx hardhat node > NUL 2>&1\" \"npm run test:integration-wait:coverage\""
+    "test:integration-wait": "wait-on http://localhost:8545 && cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/integration --forceExit",
+    "test:integration-wait:coverage": "wait-on http://localhost:8545 && cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/integration --coverage --forceExit",
+    "test:integration": "concurrently -k -s first -n \"NODE,TEST\" -c \"black,green\" --hide NODE \"npx hardhat node\" \"npm run test:integration-wait\"",
+    "test:integration:coverage": "concurrently -k -s first -n \"NODE,TEST\" -c \"black,green\" --hide NODE \"npx hardhat node\" \"npm run test:integration-wait:coverage\""
   },
   "dependencies": {
     "@tetherto/wdk-wallet": "^1.0.0-beta.1",

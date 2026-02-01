@@ -54,18 +54,18 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * Sends a transaction.
      *
      * @param {EvmTransaction | EvmTransaction[]} tx -  The transaction, or an array of multiple transactions to send in batch.
-     * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken'>} [config] - If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
+     * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | EvmErc4337WalletSponsorshipPolicyConfig} [config] - If set, overrides the 'paymasterToken', 'isSponsored', and 'sponsorshipPolicyId' options defined in the wallet account configuration.
      * @returns {Promise<TransactionResult>} The transaction's result.
      */
-    sendTransaction(tx: EvmTransaction | EvmTransaction[], config?: Pick<EvmErc4337WalletConfig, "paymasterToken">): Promise<TransactionResult>;
+    sendTransaction(tx: EvmTransaction | EvmTransaction[], config?: Pick<EvmErc4337WalletPaymasterTokenConfig, "isSponsored" | "paymasterToken"> | EvmErc4337WalletSponsorshipPolicyConfig): Promise<TransactionResult>;
     /**
      * Transfers a token to another address.
      *
      * @param {TransferOptions} options - The transfer's options.
-     * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken' | 'transferMaxFee'>} [config] - If set, overrides the 'paymasterToken' and 'transferMaxFee' options defined in the wallet account configuration.
+     * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | EvmErc4337WalletSponsorshipPolicyConfig} [config] - If set, overrides the 'paymasterToken', 'isSponsored', 'sponsorshipPolicyId', and 'transferMaxFee' options defined in the wallet account configuration.
      * @returns {Promise<TransferResult>} The transfer's result.
      */
-    transfer(options: TransferOptions, config?: Pick<EvmErc4337WalletConfig, "paymasterToken" | "transferMaxFee">): Promise<TransferResult>;
+    transfer(options: TransferOptions, config?: EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig): Promise<TransferResult>;
     /**
      * Returns a read-only copy of the account.
      *
@@ -88,4 +88,6 @@ export type TransferOptions = import("@tetherto/wdk-wallet-evm").TransferOptions
 export type TransferResult = import("@tetherto/wdk-wallet-evm").TransferResult;
 export type ApproveOptions = import("@tetherto/wdk-wallet-evm").ApproveOptions;
 export type EvmErc4337WalletConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletConfig;
+export type EvmErc4337WalletPaymasterTokenConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletPaymasterTokenConfig;
+export type EvmErc4337WalletSponsorshipPolicyConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletSponsorshipPolicyConfig;
 import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-4337.js';

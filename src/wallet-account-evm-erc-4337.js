@@ -35,6 +35,8 @@ import WalletAccountReadOnlyEvmErc4337, { SALT_NONCE } from './wallet-account-re
 /** @typedef {import('@tetherto/wdk-wallet-evm').ApproveOptions} ApproveOptions */
 
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
+/** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletPaymasterTokenConfig} EvmErc4337WalletPaymasterTokenConfig */
+/** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletSponsorshipPolicyConfig} EvmErc4337WalletSponsorshipPolicyConfig */
 
 const FEE_TOLERANCE_COEFFICIENT = 120n
 
@@ -143,17 +145,21 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * Sends a transaction.
    *
    * @param {EvmTransaction | EvmTransaction[]} tx -  The transaction, or an array of multiple transactions to send in batch.
-   * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken'>} [config] - If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
+   * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | EvmErc4337WalletSponsorshipPolicyConfig} [config] - If set, overrides the 'paymasterToken', 'isSponsored', and 'sponsorshipPolicyId' options defined in the wallet account configuration.
    * @returns {Promise<TransactionResult>} The transaction's result.
    */
   async sendTransaction (tx, config) {
-    const { paymasterToken } = config ?? this._config
+    const { paymasterToken, isSponsored, sponsorshipPolicyId } = config ?? this._config
 
     const { fee } = await this.quoteSendTransaction(tx, config)
 
+    const amountToApprove = isSponsored ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
+
     const hash = await this._sendUserOperation([tx].flat(), {
-      paymasterTokenAddress: paymasterToken.address,
-      amountToApprove: BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
+      isSponsored,
+      paymasterTokenAddress: isSponsored ? undefined : paymasterToken.address,
+      sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined,
+      amountToApprove
     })
 
     return { hash, fee }
@@ -163,23 +169,27 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * Transfers a token to another address.
    *
    * @param {TransferOptions} options - The transfer's options.
-   * @param {Pick<EvmErc4337WalletConfig, 'paymasterToken' | 'transferMaxFee'>} [config] - If set, overrides the 'paymasterToken' and 'transferMaxFee' options defined in the wallet account configuration.
+   * @param {EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig} [config] - If set, overrides the 'paymasterToken', 'isSponsored', 'sponsorshipPolicyId', and 'transferMaxFee' options defined in the wallet account configuration.
    * @returns {Promise<TransferResult>} The transfer's result.
    */
   async transfer (options, config) {
-    const { paymasterToken, transferMaxFee } = config ?? this._config
+    const { paymasterToken, transferMaxFee, isSponsored, sponsorshipPolicyId } = config ?? this._config
 
     const tx = await WalletAccountEvm._getTransferTransaction(options)
 
     const { fee } = await this.quoteSendTransaction(tx, config)
 
-    if (transferMaxFee !== undefined && fee >= transferMaxFee) {
+    if (!isSponsored && transferMaxFee !== undefined && fee >= transferMaxFee) {
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
 
+    const amountToApprove = isSponsored ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
+
     const hash = await this._sendUserOperation([tx], {
-      paymasterTokenAddress: paymasterToken.address,
-      amountToApprove: BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
+      isSponsored,
+      paymasterTokenAddress: isSponsored ? undefined : paymasterToken.address,
+      sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined,
+      amountToApprove
     })
 
     return { hash, fee }
@@ -222,7 +232,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
         paymasterOptions: {
           paymasterUrl: this._config.paymasterUrl,
           paymasterAddress: this._config.paymasterAddress,
-          paymasterTokenAddress: this._config.paymasterToken.address,
+          paymasterTokenAddress: this._config.paymasterToken?.address,
           skipApproveTransaction: true
         },
         customContracts: {

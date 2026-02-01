@@ -25,7 +25,8 @@ const ACCOUNT0 = {
   keyPair: {
     privateKey: '260905feebf1ec684f36f1599128b85f3a26c2b817f2065a2fc278398449c41f',
     publicKey: '036c082582225926b9356d95b91a4acffa3511b7cc2a14ef5338c090ea2cc3d0aa'
-  }
+  },
+  safeAddress: '0x120Ac3c0B46fBAf2e8452A23BD61a2Da9B139551'
 }
 
 const ACCOUNT1 = {
@@ -35,7 +36,8 @@ const ACCOUNT1 = {
   keyPair: {
     privateKey: 'ba3d34b786d909f83be1422b75ea18005843ff979862619987fb0bab59580158',
     publicKey: '02f8d04c3de44e53e5b0ef2f822a29087e6af80114560956518767c64fec6b0f69'
-  }
+  },
+  safeAddress: '0x6aE57374d05AEc93fcc1ab0Be1b8cFf5dFdEF3f4'
 }
 
 async function waitForTx (txHash, account) {
@@ -121,14 +123,12 @@ async function fundAccountsWithEth () {
 async function fundAccountsWithTokens (testToken, accounts) {
   let nonce = await ethersProvider.getTransactionCount(fundedWallet.address)
   for (const account of accounts) {
-    await transfer(testToken, account, 100, fundedWallet, nonce)
-    nonce++
+    await transfer(testToken, account, 1000, fundedWallet, nonce++)
   }
 }
 
 describe('@wdk/wallet-evm-erc-4337', () => {
   let wallet
-  let account0, account1
   let testToken
   let mockPaymasterToken
   let bundlerInstance, paymasterInstance
@@ -145,7 +145,11 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     bundlerInstance = servers.bundlerInstance
     paymasterInstance = servers.paymasterInstance
 
-    PAYMASTER_ADDRESS = await discoverPaymasterAddress('http://localhost:3000', ENTRY_POINT_ADDRESS, MOCK_PAYMASTER_TOKEN_ADDRESS)
+    paymasterAddress = await discoverPaymasterAddress('http://localhost:3000', ENTRY_POINT_ADDRESS, MOCK_PAYMASTER_TOKEN_ADDRESS)
+
+    const tokens = await deployTestTokens()
+    testToken = tokens.testToken
+    mockPaymasterToken = tokens.mockPaymasterToken
 
     const config = {
       chainId: 1,
@@ -153,7 +157,7 @@ describe('@wdk/wallet-evm-erc-4337', () => {
       bundlerUrl: 'http://localhost:4337',
       paymasterUrl: 'http://localhost:3000?pimlico',
       entryPointAddress: ENTRY_POINT_ADDRESS,
-      paymasterAddress: PAYMASTER_ADDRESS,
+      paymasterAddress,
       safeModulesVersion: '0.3.0',
       paymasterToken: {
         address: MOCK_PAYMASTER_TOKEN_ADDRESS
@@ -161,11 +165,8 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     }
 
     wallet = new WalletManagerEvmErc4337(SEED_PHRASE, config)
-    account0 = await wallet.getAccountByPath("0'/0/0")
-    account1 = await wallet.getAccountByPath("0'/0/1")
 
-    const safeAddress0 = await account0.getAddress()
-    const safeAddress1 = await account1.getAddress()
+    const accounts = [ACCOUNT0.safeAddress, ACCOUNT1.safeAddress]
 
     const accounts = [ACCOUNT0.address, ACCOUNT1.address, safeAddress0, safeAddress1]
 
@@ -173,20 +174,18 @@ describe('@wdk/wallet-evm-erc-4337', () => {
 
     let nonce = await ethersProvider.getTransactionCount(fundedWallet.address)
     await fundedWallet.sendTransaction({
-      to: safeAddress0,
-      value: ethers.parseEther('1'),
-      nonce
+      to: ACCOUNT0.safeAddress,
+      value: ethers.parseEther('10'),
+      nonce: nonce++
     })
     nonce++
     await fundedWallet.sendTransaction({
-      to: safeAddress1,
-      value: ethers.parseEther('1'),
-      nonce
+      to: ACCOUNT1.safeAddress,
+      value: ethers.parseEther('10'),
+      nonce: nonce++
     })
-    nonce++
-    await mintMockTokens(safeAddress0, ethers.parseEther('1000'), fundedWallet, nonce)
-    nonce++
-    await mintMockTokens(safeAddress1, ethers.parseEther('1000'), fundedWallet, nonce)
+    await mintMockTokens(ACCOUNT0.safeAddress, ethers.parseEther('10000'), fundedWallet, nonce++)
+    await mintMockTokens(ACCOUNT1.safeAddress, ethers.parseEther('10000'), fundedWallet, nonce++)
   }, TIMEOUT)
 
   afterAll(async () => {
@@ -194,7 +193,9 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     await paymasterInstance.stop()
   }, TIMEOUT)
 
-  test('should derive an account, quote the cost of a tx and check the fee', async () => {
+  test('should derive accounts with correct properties and safe addresses', async () => {
+    const account0 = await wallet.getAccountByPath("0'/0/0")
+
     expect(account0.index).toBe(ACCOUNT0.index)
     expect(account0.path).toBe(ACCOUNT0.path)
     expect(account0.keyPair).toEqual({
@@ -211,10 +212,12 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     const safeAddress0 = await account0.getAddress()
     const safeAddress1 = await account1.getAddress()
 
-    expect(safeAddress0).toBeDefined()
-    expect(safeAddress1).toBeDefined()
-    expect(safeAddress0).not.toBe(ACCOUNT0.address)
-    expect(safeAddress1).not.toBe(ACCOUNT1.address)
+    expect(safeAddress0).toBe(ACCOUNT0.safeAddress)
+  }, TIMEOUT)
+
+  test('should derive an account, quote the cost of a tx and check the fee', async () => {
+    const account0 = await wallet.getAccountByPath("0'/0/0")
+    const account1 = await wallet.getAccountByPath("0'/0/1")
 
     const TRANSACTION = {
       to: await account1.getAddress(),
@@ -236,14 +239,11 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     const account0 = await wallet.getAccountByPath("0'/0/0")
     const account1 = await wallet.getAccountByPath("0'/0/1")
 
-    const safeAddress0 = await account0.getAddress()
-    const safeAddress1 = await account1.getAddress()
-
-    const balance0Before = await ethersProvider.getBalance(safeAddress0)
-    const balance1Before = await ethersProvider.getBalance(safeAddress1)
+    const balance0Before = await ethersProvider.getBalance(ACCOUNT0.safeAddress)
+    const balance1Before = await ethersProvider.getBalance(ACCOUNT1.safeAddress)
 
     const TRANSACTION = {
-      to: safeAddress0,
+      to: ACCOUNT0.safeAddress,
       value: ethers.parseEther('1')
     }
 
@@ -251,8 +251,8 @@ describe('@wdk/wallet-evm-erc-4337', () => {
 
     await waitForTx(hash, account1)
 
-    const balance0After = await ethersProvider.getBalance(safeAddress0)
-    const balance1After = await ethersProvider.getBalance(safeAddress1)
+    const balance0After = await ethersProvider.getBalance(ACCOUNT0.safeAddress)
+    const balance1After = await ethersProvider.getBalance(ACCOUNT1.safeAddress)
 
     expect(balance0After).toBe(balance0Before + ethers.parseEther('1'))
     expect(balance1After).toBe(balance1Before - ethers.parseEther('1'))
@@ -263,7 +263,7 @@ describe('@wdk/wallet-evm-erc-4337', () => {
 
     const TRANSACTION = {
       token: testToken.target,
-      recipient: ACCOUNT1.address,
+      recipient: ACCOUNT1.safeAddress,
       amount: 1n
     }
 
@@ -276,19 +276,18 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     expect(transaction.status).toBe(1)
 
     expect(fee).toBe(estimatedFee)
+    expect(transaction.to).toBe(ENTRY_POINT_ADDRESS)
   }, TIMEOUT)
 
   test('should derive two accounts by their paths, transfer a token from account 0 to 1 and get the correct balances and token balances', async () => {
     const account0 = await wallet.getAccountByPath("0'/0/0")
 
-    const safeAddress0 = await account0.getAddress()
-
-    const balance0Before = await balanceOf(testToken, safeAddress0)
-    const balance1Before = await balanceOf(testToken, ACCOUNT1.address)
+    const balance0Before = await balanceOf(testToken, ACCOUNT0.safeAddress)
+    const balance1Before = await balanceOf(testToken, ACCOUNT1.safeAddress)
 
     const TRANSACTION = {
       token: testToken.target,
-      recipient: ACCOUNT1.address,
+      recipient: ACCOUNT1.safeAddress,
       amount: 1n
     }
 
@@ -296,8 +295,8 @@ describe('@wdk/wallet-evm-erc-4337', () => {
 
     await waitForTx(hash, account0)
 
-    const balance0After = await balanceOf(testToken, safeAddress0)
-    const balance1After = await balanceOf(testToken, ACCOUNT1.address)
+    const balance0After = await balanceOf(testToken, ACCOUNT0.safeAddress)
+    const balance1After = await balanceOf(testToken, ACCOUNT1.safeAddress)
 
     expect(balance0After).toBe(balance0Before - 1n)
     expect(balance1After).toBe(balance1Before + 1n)
@@ -307,38 +306,35 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     const account0 = await wallet.getAccountByPath("0'/0/0")
     const account1 = await wallet.getAccountByPath("0'/0/1")
 
-    const safeAddress0 = await account0.getAddress()
-    const safeAddress1 = await account1.getAddress()
-
-    const balance0Before = await balanceOf(testToken, safeAddress0)
-    const balance1Before = await balanceOf(testToken, safeAddress1)
+    const balance0Before = await balanceOf(testToken, ACCOUNT0.safeAddress)
+    const balance1Before = await balanceOf(testToken, ACCOUNT1.safeAddress)
 
     const APPROVE_TRANSACTION = {
       to: testToken.target,
       value: 0,
-      data: testToken.interface.encodeFunctionData('approve', [safeAddress1, 1n])
+      data: testToken.interface.encodeFunctionData('approve', [ACCOUNT1.safeAddress, 1n])
     }
 
     const { hash: approveHash } = await account0.sendTransaction(APPROVE_TRANSACTION)
 
     await waitForTx(approveHash, account0)
 
-    const approvedAmount = await testToken.allowance(safeAddress0, safeAddress1)
+    const approvedAmount = await testToken.allowance(ACCOUNT0.safeAddress, ACCOUNT1.safeAddress)
 
     expect(approvedAmount).toBe(1n)
 
     const TRANSFER_TRANSACTION = {
       to: testToken.target,
       value: 0,
-      data: testToken.interface.encodeFunctionData('transferFrom', [safeAddress0, safeAddress1, 1n])
+      data: testToken.interface.encodeFunctionData('transferFrom', [ACCOUNT0.safeAddress, ACCOUNT1.safeAddress, 1n])
     }
 
     const { hash: transferHash } = await account1.sendTransaction(TRANSFER_TRANSACTION)
 
     await waitForTx(transferHash, account1)
 
-    const balance1After = await balanceOf(testToken, safeAddress1)
-    const balance0After = await balanceOf(testToken, safeAddress0)
+    const balance1After = await balanceOf(testToken, ACCOUNT1.safeAddress)
+    const balance0After = await balanceOf(testToken, ACCOUNT0.safeAddress)
 
     expect(balance1After).toBe(balance1Before + 1n)
     expect(balance0After).toBe(balance0Before - 1n)
@@ -347,12 +343,10 @@ describe('@wdk/wallet-evm-erc-4337', () => {
   test('should derive two accounts, transfer x eth from acount 0 to 1, and confirm the paymaster sponsored the tx using the mock paymaster token', async () => {
     const account0 = await wallet.getAccountByPath("0'/0/0")
 
-    const safeAddress0 = await account0.getAddress()
-
-    const balance0Before = await balanceOf(mockPaymasterToken, safeAddress0)
+    const balance0Before = await balanceOf(mockPaymasterToken, ACCOUNT0.safeAddress)
 
     const TRANSACTION = {
-      to: ACCOUNT1.address,
+      to: ACCOUNT1.safeAddress,
       value: ethers.parseEther('1')
     }
 
@@ -360,7 +354,7 @@ describe('@wdk/wallet-evm-erc-4337', () => {
 
     await waitForTx(hash, account0)
 
-    const balance0After = await balanceOf(mockPaymasterToken, safeAddress0)
+    const balance0After = await balanceOf(mockPaymasterToken, ACCOUNT0.safeAddress)
 
     expect(balance0After).toBeLessThan(balance0Before)
   }, TIMEOUT)

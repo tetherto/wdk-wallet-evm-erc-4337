@@ -95,6 +95,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     getAllowance(token: string, spender: string): Promise<bigint>;
     /**
+     * Verifies a message's signature.
+     *
+     * @param {string} message - The original message.
+     * @param {string} signature - The signature to verify.
+     * @returns {Promise<boolean>} True if the signature is valid.
+     */
+    verify(message: string, signature: string): Promise<boolean>;
+    /**
      * Returns the safe's erc-4337 pack of the account.
      *
      * @protected

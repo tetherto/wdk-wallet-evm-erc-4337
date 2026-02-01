@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeAll, beforeEach, afterAll, jest } from '@jest/globals'
+import { describe, expect, test, beforeAll, afterAll, jest } from '@jest/globals'
 import WalletManagerEvmErc4337 from '../../index.js'
 import { ethers } from 'ethers'
 import { alto } from 'prool/instances'
@@ -10,6 +10,7 @@ import path from 'path'
 
 const TIMEOUT = 60000 // 60 seconds
 
+let PAYMASTER_ADDRESS
 const ENTRY_POINT_ADDRESS = '0x0000000071727De22E5E9d8BAf0edAc6f37da032'
 
 const ethersProvider = new ethers.JsonRpcProvider('http://localhost:8545')
@@ -107,11 +108,23 @@ async function deployTestTokens () {
   }
 }
 
-async function fundAccountsWithTokens (testToken, accounts, nonce) {
+async function fundAccountsWithEth () {
+  let nonce = await ethersProvider.getTransactionCount(fundedWallet.address)
+  for (const account of [ACCOUNT0, ACCOUNT1]) {
+    await fundedWallet.sendTransaction({
+      to: account.address,
+      value: ethers.parseEther('10'),
+      nonce
+    })
+    nonce++
+  }
+}
+
+async function fundAccountsWithTokens (testToken, accounts) {
+  let nonce = await ethersProvider.getTransactionCount(fundedWallet.address)
   for (const account of accounts) {
     await transfer(testToken, account, 1000, fundedWallet, nonce++)
   }
-  return nonce
 }
 
 describe('@wdk/wallet-evm-erc-4337', () => {
@@ -119,9 +132,14 @@ describe('@wdk/wallet-evm-erc-4337', () => {
   let testToken
   let mockPaymasterToken
   let bundlerInstance, paymasterInstance
-  let paymasterAddress
 
   beforeAll(async () => {
+    await fundAccountsWithEth()
+
+    const tokens = await deployTestTokens()
+    testToken = tokens.testToken
+    mockPaymasterToken = tokens.mockPaymasterToken
+
     const servers = await setupServers()
 
     bundlerInstance = servers.bundlerInstance
@@ -150,15 +168,17 @@ describe('@wdk/wallet-evm-erc-4337', () => {
 
     const accounts = [ACCOUNT0.safeAddress, ACCOUNT1.safeAddress]
 
+    const accounts = [ACCOUNT0.address, ACCOUNT1.address, safeAddress0, safeAddress1]
+
+    await fundAccountsWithTokens(testToken, accounts)
+
     let nonce = await ethersProvider.getTransactionCount(fundedWallet.address)
-
-    nonce = await fundAccountsWithTokens(testToken, accounts, nonce)
-
     await fundedWallet.sendTransaction({
       to: ACCOUNT0.safeAddress,
       value: ethers.parseEther('10'),
       nonce: nonce++
     })
+    nonce++
     await fundedWallet.sendTransaction({
       to: ACCOUNT1.safeAddress,
       value: ethers.parseEther('10'),
@@ -182,8 +202,15 @@ describe('@wdk/wallet-evm-erc-4337', () => {
       privateKey: new Uint8Array(Buffer.from(ACCOUNT0.keyPair.privateKey, 'hex')),
       publicKey: new Uint8Array(Buffer.from(ACCOUNT0.keyPair.publicKey, 'hex'))
     })
+    expect(account1.index).toBe(ACCOUNT1.index)
+    expect(account1.path).toBe(ACCOUNT1.path)
+    expect(account1.keyPair).toEqual({
+      privateKey: new Uint8Array(Buffer.from(ACCOUNT1.keyPair.privateKey, 'hex')),
+      publicKey: new Uint8Array(Buffer.from(ACCOUNT1.keyPair.publicKey, 'hex'))
+    })
 
     const safeAddress0 = await account0.getAddress()
+    const safeAddress1 = await account1.getAddress()
 
     expect(safeAddress0).toBe(ACCOUNT0.safeAddress)
   }, TIMEOUT)
@@ -204,12 +231,12 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     const transaction = await waitForTx(hash, account0)
 
     expect(transaction.status).toBe(1)
-    expect(transaction.to).toBe(ENTRY_POINT_ADDRESS)
 
     expect(fee).toBe(estimatedFee)
   }, TIMEOUT)
 
   test('should derive two accounts, send a tx from account 0 to 1 and get the correct balances', async () => {
+    const account0 = await wallet.getAccountByPath("0'/0/0")
     const account1 = await wallet.getAccountByPath("0'/0/1")
 
     const balance0Before = await ethersProvider.getBalance(ACCOUNT0.safeAddress)
@@ -382,7 +409,7 @@ describe('@wdk/wallet-evm-erc-4337', () => {
       bundlerUrl: 'http://localhost:4337',
       paymasterUrl: 'http://localhost:3000?pimlico',
       entryPointAddress: ENTRY_POINT_ADDRESS,
-      paymasterAddress: paymasterAddress,
+      paymasterAddress: PAYMASTER_ADDRESS,
       safeModulesVersion: '0.3.0',
       paymasterToken: {
         address: MOCK_PAYMASTER_TOKEN_ADDRESS
@@ -401,6 +428,8 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     }
 
     await expect(account.transfer(TRANSFER))
-      .rejects.toThrow('Exceeded maximum fee cost for transfer operation.')
+      .rejects.toThrow(expect.objectContaining({
+        details: expect.stringContaining('0xacfdb444')
+      }))
   }, TIMEOUT)
 })

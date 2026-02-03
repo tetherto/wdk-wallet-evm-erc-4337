@@ -18,7 +18,7 @@ import { Contract } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
-import { Safe4337Pack } from '@wdk-safe-global/relay-kit'
+import { Safe4337Pack } from '@tetherto/wdk-safe-relay-kit'
 
 import WalletAccountReadOnlyEvmErc4337, { SALT_NONCE } from './wallet-account-read-only-evm-erc-4337.js'
 

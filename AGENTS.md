@@ -44,7 +44,7 @@ Source code must be strictly typed using JSDoc comments to support the `build:ty
 
 ## Repository Specifics
 - **Domain:** EVM Account Abstraction (ERC-4337).
-- **Key Libraries:** `@wdk-safe-global/relay-kit`, `ethers`.
+- **Key Libraries:** `@tetherto/wdk-safe-relay-kit`, `ethers`.
 - **Features:** UserOperations, Bundlers, Paymasters.
 - **Architecture:** specialized wallet manager for Smart Accounts.
 - **Testing:** Requires local Hardhat node (localhost:8545).

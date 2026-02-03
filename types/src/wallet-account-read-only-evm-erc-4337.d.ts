@@ -124,7 +124,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     private _getUserOperationGasCost;
 }
 export type Eip1193Provider = import("ethers").Eip1193Provider;
-export type UserOperationReceipt = import("@wdk-safe-global/relay-kit").UserOperationReceipt;
+export type UserOperationReceipt = import("@tetherto/wdk-safe-relay-kit").UserOperationReceipt;
 export type EvmTransaction = import("@tetherto/wdk-wallet-evm").EvmTransaction;
 export type TransactionResult = import("@tetherto/wdk-wallet-evm").TransactionResult;
 export type TransferOptions = import("@tetherto/wdk-wallet-evm").TransferOptions;
@@ -191,5 +191,5 @@ export type EvmErc4337WalletSponsorshipPolicyConfig = {
 };
 export type EvmErc4337WalletConfig = EvmErc4337WalletCommonConfig & (EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig);
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';
-import { Safe4337Pack } from '@wdk-safe-global/relay-kit';
-import { GenericFeeEstimator } from '@wdk-safe-global/relay-kit';
+import { Safe4337Pack } from '@tetherto/wdk-safe-relay-kit';
+import { GenericFeeEstimator } from '@tetherto/wdk-safe-relay-kit';

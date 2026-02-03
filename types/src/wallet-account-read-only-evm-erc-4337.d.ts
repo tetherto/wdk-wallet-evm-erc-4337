@@ -1,4 +1,3 @@
-
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
     /**
      * Creates a new read-only evm [erc-4337](https://www.erc4337.io/docs) wallet account.
@@ -35,8 +34,22 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @type {bigint | undefined}
      */
     protected _chainId: bigint | undefined;
+    /**
+     * The predicted safe address (cached).
+     *
+     * @private
+     * @type {string | undefined}
+     */
+    private _predictedAddress;
     /** @private */
     private _ownerAccountAddress;
+    /**
+     * Returns the account's address.
+     * Uses local CREATE2 address prediction without making network calls.
+     *
+     * @returns {Promise<string>} The account's address.
+     */
+    getAddress(): Promise<string>;
     /**
      * Returns the account's eth balance.
      *
@@ -60,7 +73,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * Quotes the costs of a send transaction operation.
      *
      * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
-     * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | Pick<EvmErc4337WalletSponsorshipPolicyConfig, 'isSponsored'>} [config] - If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
+     * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | Pick<EvmErc4337WalletSponsorshipPolicyConfig, 'isSponsored'>} [config] - If set, overrides the 'paymasterToken' and 'isSponsored' options defined in the wallet account configuration.
      * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
      */
     quoteSendTransaction(tx: EvmTransaction | EvmTransaction[], config?: Pick<EvmErc4337WalletPaymasterTokenConfig, "isSponsored" | "paymasterToken"> | Pick<EvmErc4337WalletSponsorshipPolicyConfig, "isSponsored">): Promise<Omit<TransactionResult, "hash">>;
@@ -68,10 +81,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * Quotes the costs of a transfer operation.
      *
      * @param {TransferOptions} options - The transfer's options.
-     * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | EvmErc4337WalletSponsorshipPolicyConfig} [config] -  If set, overrides the 'paymasterToken' option defined in the wallet account configuration.
-     * @returns {Promise<Omit<TransferResult, 'hash'>>} The transfer's quotes.
+     * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
+     * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transfer's quotes.
      */
-    quoteTransfer(options: TransferOptions, config?: Pick<EvmErc4337WalletPaymasterTokenConfig, "isSponsored" | "paymasterToken"> | EvmErc4337WalletSponsorshipPolicyConfig): Promise<Omit<TransferResult, "hash">>;
+    quoteTransfer(options: TransferOptions, config?: Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig>): Promise<Omit<TransactionResult, "hash">>;
     /**
      * Returns a transaction's receipt.
      *
@@ -125,6 +138,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 }
 export type Eip1193Provider = import("ethers").Eip1193Provider;
 export type UserOperationReceipt = import("@tetherto/wdk-safe-relay-kit").UserOperationReceipt;
+export type Safe4337Pack = import("@tetherto/wdk-safe-relay-kit").Safe4337Pack;
+export type GenericFeeEstimator = import("@tetherto/wdk-safe-relay-kit").GenericFeeEstimator;
 export type EvmTransaction = import("@tetherto/wdk-wallet-evm").EvmTransaction;
 export type TransactionResult = import("@tetherto/wdk-wallet-evm").TransactionResult;
 export type TransferOptions = import("@tetherto/wdk-wallet-evm").TransferOptions;
@@ -191,5 +206,3 @@ export type EvmErc4337WalletSponsorshipPolicyConfig = {
 };
 export type EvmErc4337WalletConfig = EvmErc4337WalletCommonConfig & (EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig);
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';
-import { Safe4337Pack } from '@tetherto/wdk-safe-relay-kit';
-import { GenericFeeEstimator } from '@tetherto/wdk-safe-relay-kit';

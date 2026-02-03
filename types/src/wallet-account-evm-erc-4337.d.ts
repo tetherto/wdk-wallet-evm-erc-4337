@@ -9,7 +9,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      */
     constructor(seed: string | Uint8Array, path: string, config: EvmErc4337WalletConfig);
     /**
-     * The wallet account configuration.
+     * The evm erc-4337 wallet account configuration.
      *
      * @protected
      * @type {EvmErc4337WalletConfig}
@@ -62,7 +62,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * Transfers a token to another address.
      *
      * @param {TransferOptions} options - The transfer's options.
-     * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | EvmErc4337WalletSponsorshipPolicyConfig} [config] - If set, overrides the 'paymasterToken', 'isSponsored', 'sponsorshipPolicyId', and 'transferMaxFee' options defined in the wallet account configuration.
+     * @param {EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig} [config] - If set, overrides the 'paymasterToken', 'isSponsored', 'sponsorshipPolicyId', and 'transferMaxFee' options defined in the wallet account configuration.
      * @returns {Promise<TransferResult>} The transfer's result.
      */
     transfer(options: TransferOptions, config?: EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig): Promise<TransferResult>;

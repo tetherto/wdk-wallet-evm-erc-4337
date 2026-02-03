@@ -200,7 +200,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Quotes the costs of a transfer operation.
    *
    * @param {TransferOptions} options - The transfer's options.
-   * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | Pick<EvmErc4337WalletSponsorshipPolicyConfig, 'isSponsored'>} [config] - If set, overrides the 'paymasterToken' and 'isSponsored' options defined in the wallet account configuration.
+   * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
+   * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transfer's quotes.
    */
   async quoteTransfer (options, config) {
     const tx = await WalletAccountReadOnlyEvm._getTransferTransaction(options)

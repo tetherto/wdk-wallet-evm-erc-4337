@@ -31,6 +31,10 @@ import { Safe4337Pack, GenericFeeEstimator, PimlicoFeeEstimator } from '@tethert
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').EvmTransactionReceipt} EvmTransactionReceipt */
 
+/** @typedef {import('@tetherto/wdk-wallet-evm').TypedData} TypedData */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TypedDataDomain} TypedDataDomain */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TypedDataField} TypedDataField */
+
 /**
  * @typedef {Object} EvmErc4337WalletCommonConfig
  * @property {number} chainId - The blockchain's id (e.g., 1 for ethereum).
@@ -263,6 +267,19 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, this._config)
 
     return await evmReadOnlyAccount.verify(message, signature)
+  }
+
+  /**
+   * Verifies a typed data signature.
+   *
+   * @param {TypedData} typedData - The typed data to verify.
+   * @param {string} signature - The signature to verify.
+   * @returns {Promise<boolean>} True if the signature is valid.
+   */
+  async verifyTypedData (typedData, signature) {
+    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, this._config)
+
+    return await evmReadOnlyAccount.verifyTypedData(typedData, signature)
   }
 
   /**

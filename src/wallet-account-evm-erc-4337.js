@@ -37,6 +37,7 @@ import WalletAccountReadOnlyEvmErc4337, { SALT_NONCE } from './wallet-account-re
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletPaymasterTokenConfig} EvmErc4337WalletPaymasterTokenConfig */
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletSponsorshipPolicyConfig} EvmErc4337WalletSponsorshipPolicyConfig */
+/** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').TypedData} TypedData */
 
 const FEE_TOLERANCE_COEFFICIENT = 120n
 
@@ -103,6 +104,16 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    */
   async sign (message) {
     return await this._ownerAccount.sign(message)
+  }
+
+  /**
+   * Signs typed data according to EIP-712.
+   *
+   * @param {TypedData} typedData - The typed data to sign.
+   * @returns {Promise<string>} The typed data signature.
+   */
+  async signTypedData ({ domain, types, message }) {
+    return await this._ownerAccount.signTypedData({ domain, types, message })
   }
 
   /**

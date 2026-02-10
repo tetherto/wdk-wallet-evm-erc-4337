@@ -79,6 +79,15 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 
   /**
+   * The account's address.
+   *
+   * @type {string}
+   */
+  get address () {
+    return this._ownerAccount.address
+  }
+
+  /**
    * The derivation path of this account (see [BIP-44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)).
    *
    * @type {string}

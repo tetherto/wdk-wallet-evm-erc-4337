@@ -398,11 +398,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     return evmReadOnlyAccount
   }
 
-  /**
-   * @private
-   * @param {string} bundlerUrl - The bundler URL to select the appropriate fee estimator.
-   */
-  async _getFeeEstimator (bundlerUrl) {
+  /** @private */
+  async _getFeeEstimator () {
+    const { bundlerUrl } = this._config
+
     if (!this._feeEstimators.has(bundlerUrl)) {
       const isPimlico = bundlerUrl?.includes('pimlico')
 
@@ -437,7 +436,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       const safeOperation = await safe4337Pack.createTransaction({
         transactions: txs.map(tx => ({ from: address, ...tx })),
         options: {
-          feeEstimator: await this._getFeeEstimator(config.bundlerUrl),
+          feeEstimator: await this._getFeeEstimator(),
           ...options
         }
       })

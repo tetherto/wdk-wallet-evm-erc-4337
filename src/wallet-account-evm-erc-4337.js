@@ -290,7 +290,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
         transactions: txs.map(tx => ({ from: address, ...tx })),
         options: {
           validUntil: twoMinutesFromNow,
-          feeEstimator: await this._getFeeEstimator(config.bundlerUrl),
+          feeEstimator: await this._getFeeEstimator(),
           ...options
         }
       })

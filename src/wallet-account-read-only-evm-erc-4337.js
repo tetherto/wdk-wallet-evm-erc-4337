@@ -20,6 +20,8 @@ import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
 import { Safe4337Pack, GenericFeeEstimator, PimlicoFeeEstimator } from '@tetherto/wdk-safe-relay-kit'
 
+import { ConfigurationError } from './errors.js'
+
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
 /** @typedef {import('@tetherto/wdk-safe-relay-kit').UserOperationReceipt} UserOperationReceipt */
@@ -287,14 +289,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @protected
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration to validate.
-   * @throws {Error} If the configuration is invalid or has missing required fields.
+   * @throws {ConfigurationError} If the configuration is invalid or has missing required fields.
    * @returns {void}
    */
   _validateConfig (config) {
     const { isSponsored, useNativeCoins, paymasterUrl, paymasterAddress, paymasterToken } = config
 
     if (isSponsored && useNativeCoins) {
-      throw new Error("Configuration error: Cannot use both 'isSponsored: true' and 'useNativeCoins: true'. Please use only one.")
+      throw new ConfigurationError("Cannot use both 'isSponsored: true' and 'useNativeCoins: true'. Please use only one.")
     }
 
     if (!isSponsored && !useNativeCoins) {
@@ -313,7 +315,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       }
 
       if (missingFields.length > 0) {
-        throw new Error(`Configuration error: Missing required paymaster token configuration fields: ${missingFields.join(', ')}.`)
+        throw new ConfigurationError(`Missing required paymaster token configuration fields: ${missingFields.join(', ')}.`)
       }
     }
 
@@ -325,7 +327,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       }
 
       if (missingFields.length > 0) {
-        throw new Error(`Configuration error: Missing required sponsorship policy configuration fields: ${missingFields.join(', ')}.`)
+        throw new ConfigurationError(`Missing required sponsorship policy configuration fields: ${missingFields.join(', ')}.`)
       }
     }
   }

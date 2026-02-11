@@ -116,7 +116,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @protected
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration to validate.
-     * @throws {Error} If the configuration is invalid or has missing required fields.
+     * @throws {ConfigurationError} If the configuration is invalid or has missing required fields.
      * @returns {void}
      */
     protected _validateConfig(config: Omit<EvmErc4337WalletConfig, "transferMaxFee">): void;
@@ -150,6 +150,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 }
 export type Eip1193Provider = import("ethers").Eip1193Provider;
 export type UserOperationReceipt = import("@tetherto/wdk-safe-relay-kit").UserOperationReceipt;
+export type ConfigurationError = import("./errors.js").ConfigurationError;
 export type Safe4337Pack = import("@tetherto/wdk-safe-relay-kit").Safe4337Pack;
 export type GenericFeeEstimator = import("@tetherto/wdk-safe-relay-kit").GenericFeeEstimator;
 export type PimlicoFeeEstimator = import("@tetherto/wdk-safe-relay-kit").PimlicoFeeEstimator;

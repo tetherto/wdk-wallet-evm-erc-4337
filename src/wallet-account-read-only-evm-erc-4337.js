@@ -95,7 +95,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     /**
      * Map of Safe4337Pack instances cached by configuration.
      *
-     * @private
+     * @protected
      * @type {Map<string, import('@tetherto/wdk-safe-relay-kit').Safe4337Pack>}
      */
     this._safe4337Packs = new Map()
@@ -103,7 +103,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     /**
      * Map of fee estimators cached by bundler URL.
      *
-     * @private
+     * @protected
      * @type {Map<string, GenericFeeEstimator | PimlicoFeeEstimator>}
      */
     this._feeEstimators = new Map()

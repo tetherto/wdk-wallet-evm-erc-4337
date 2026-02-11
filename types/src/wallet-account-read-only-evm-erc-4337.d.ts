@@ -17,17 +17,17 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     /**
      * Map of Safe4337Pack instances cached by configuration.
      *
-     * @private
+     * @protected
      * @type {Map<string, import('@tetherto/wdk-safe-relay-kit').Safe4337Pack>}
      */
-    private _safe4337Packs;
+    protected _safe4337Packs;
     /**
-     * The safe's fee estimator.
+     * Map of fee estimators cached by bundler URL.
      *
-     * @private
+     * @protected
      * @type {Map<string, GenericFeeEstimator | PimlicoFeeEstimator>}
      */
-    private _feeEstimators;
+    protected _feeEstimators;
     /**
      * The chain id.
      *

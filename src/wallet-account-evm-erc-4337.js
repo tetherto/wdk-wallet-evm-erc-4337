@@ -37,6 +37,7 @@ import WalletAccountReadOnlyEvmErc4337, { SALT_NONCE } from './wallet-account-re
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletPaymasterTokenConfig} EvmErc4337WalletPaymasterTokenConfig */
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletSponsorshipPolicyConfig} EvmErc4337WalletSponsorshipPolicyConfig */
+/** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletNativeCoinsConfig} EvmErc4337WalletNativeCoinsConfig */
 
 const FEE_TOLERANCE_COEFFICIENT = 120n
 
@@ -145,20 +146,24 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * Sends a transaction.
    *
    * @param {EvmTransaction | EvmTransaction[]} tx -  The transaction, or an array of multiple transactions to send in batch.
-   * @param {Pick<EvmErc4337WalletPaymasterTokenConfig, 'isSponsored' | 'paymasterToken'> | EvmErc4337WalletSponsorshipPolicyConfig} [config] - If set, overrides the 'paymasterToken', 'isSponsored', and 'sponsorshipPolicyId' options defined in the wallet account configuration.
+   * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<TransactionResult>} The transaction's result.
    */
   async sendTransaction (tx, config) {
-    const { paymasterToken, isSponsored, sponsorshipPolicyId } = config ?? this._config
+    const mergedConfig = { ...this._config, ...config }
+
+    if (config) {
+      this._validateConfig(mergedConfig)
+    }
+
+    const { isSponsored, useNativeCoins } = mergedConfig
 
     const { fee } = await this.quoteSendTransaction(tx, config)
 
-    const amountToApprove = isSponsored ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
+    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
 
     const hash = await this._sendUserOperation([tx].flat(), {
-      isSponsored,
-      paymasterTokenAddress: isSponsored ? undefined : paymasterToken.address,
-      sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined,
+      ...mergedConfig,
       amountToApprove
     })
 
@@ -169,26 +174,30 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * Transfers a token to another address.
    *
    * @param {TransferOptions} options - The transfer's options.
-   * @param {EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig} [config] - If set, overrides the 'paymasterToken', 'isSponsored', 'sponsorshipPolicyId', and 'transferMaxFee' options defined in the wallet account configuration.
+   * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<TransferResult>} The transfer's result.
    */
   async transfer (options, config) {
-    const { paymasterToken, transferMaxFee, isSponsored, sponsorshipPolicyId } = config ?? this._config
+    const mergedConfig = { ...this._config, ...config }
+
+    if (config) {
+      this._validateConfig(mergedConfig)
+    }
+
+    const { isSponsored, useNativeCoins, transferMaxFee } = mergedConfig
 
     const tx = await WalletAccountEvm._getTransferTransaction(options)
 
     const { fee } = await this.quoteSendTransaction(tx, config)
 
-    if (!isSponsored && transferMaxFee !== undefined && fee >= transferMaxFee) {
+    if (!isSponsored && !useNativeCoins && transferMaxFee !== undefined && fee >= transferMaxFee) {
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
 
-    const amountToApprove = isSponsored ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
+    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
 
     const hash = await this._sendUserOperation([tx], {
-      isSponsored,
-      paymasterTokenAddress: isSponsored ? undefined : paymasterToken.address,
-      sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined,
+      ...mergedConfig,
       amountToApprove
     })
 
@@ -215,42 +224,73 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     this._ownerAccount.dispose()
   }
 
-  async _getSafe4337Pack () {
-    if (!this._safe4337Pack) {
+  /**
+   * Returns the safe's erc-4337 pack of the account.
+   *
+   * @protected
+   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The configuration object. Defaults to this._config if not provided.
+   * @returns {Promise<Safe4337Pack>} The safe's erc-4337 pack.
+   */
+  async _getSafe4337Pack (config = this._config) {
+    const { isSponsored, useNativeCoins, paymasterUrl, paymasterAddress, paymasterToken } = config
+
+    let cacheKey
+    if (useNativeCoins) {
+      cacheKey = 'native'
+    } else if (isSponsored) {
+      cacheKey = `sponsored:${paymasterUrl}`
+    } else {
+      cacheKey = `paymaster:${paymasterUrl}:${paymasterAddress}`
+    }
+
+    if (!this._safe4337Packs.has(cacheKey)) {
       const owner = await this._ownerAccount.getAddress()
 
-      this._safe4337Pack = await Safe4337Pack.init({
-        provider: this._config.provider,
+      const safe4337Pack = await Safe4337Pack.init({
+        provider: config.provider,
         signer: this._ownerAccount._account,
-        bundlerUrl: this._config.bundlerUrl,
-        safeModulesVersion: this._config.safeModulesVersion,
+        bundlerUrl: config.bundlerUrl,
+        safeModulesVersion: config.safeModulesVersion,
         options: {
           owners: [owner],
           threshold: 1,
           saltNonce: SALT_NONCE
         },
-        paymasterOptions: {
-          paymasterUrl: this._config.paymasterUrl,
-          paymasterAddress: this._config.paymasterAddress,
-          paymasterTokenAddress: this._config.paymasterToken?.address,
-          skipApproveTransaction: true
-        },
         customContracts: {
-          entryPointAddress: this._config.entryPointAddress
-        }
+          entryPointAddress: config.entryPointAddress
+        },
+        paymasterOptions: useNativeCoins
+          ? undefined
+          : {
+              paymasterUrl,
+              paymasterAddress,
+              paymasterTokenAddress: paymasterToken?.address,
+              skipApproveTransaction: true
+            }
       })
+
+      this._safe4337Packs.set(cacheKey, safe4337Pack)
     }
 
-    return this._safe4337Pack
+    return this._safe4337Packs.get(cacheKey)
   }
 
   /** @private */
-  async _sendUserOperation (txs, options) {
-    const safe4337Pack = await this._getSafe4337Pack()
+  async _sendUserOperation (txs, { amountToApprove, ...config }) {
+    const { useNativeCoins, paymasterToken, isSponsored, sponsorshipPolicyId } = config
+
+    const safe4337Pack = await this._getSafe4337Pack(config)
 
     const address = await this.getAddress()
 
     const twoMinutesFromNow = Math.floor(Date.now() / 1_000) + 2 * 60
+
+    const options = {
+      amountToApprove,
+      paymasterTokenAddress: (isSponsored || useNativeCoins) ? undefined : paymasterToken?.address,
+      isSponsored,
+      sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined
+    }
 
     try {
       const safeOperation = await safe4337Pack.createTransaction({

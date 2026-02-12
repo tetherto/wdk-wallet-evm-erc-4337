@@ -43,18 +43,30 @@ import WalletManagerEvmErc4337, {
 // Use a BIP-39 seed phrase (replace with your own secure phrase)
 const seedPhrase = 'test only example nut use this real life secret phrase must random'
 
-// Create wallet manager with ERC-4337 config
+// Create wallet manager with ERC-4337 config (paymaster token mode)
 const wallet = new WalletManagerEvmErc4337(seedPhrase, {
-  // Required parameters
+  // Common parameters (required for all modes)
   chainId: 1, // Ethereum Mainnet
   provider: 'https://eth-mainnet.g.alchemy.com/v2/your-api-key', // RPC endpoint
   bundlerUrl: 'https://api.stackup.sh/v1/bundler/your-api-key', // ERC-4337 bundler
   entryPointAddress: '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789', // EntryPoint contract
-  factoryAddress: '0x3F51274DfD7c51Ac1C4C798B21f295611560d511',  // Account factory contract
-  
-  // Optional parameters
-  paymasterUrl: 'https://api.paymaster.com', // Optional: Paymaster service URL
+  safeModulesVersion: '0.3.0',
+
+  // Paymaster token mode parameters
+  paymasterUrl: 'https://api.paymaster.com',
+  paymasterAddress: '0x8b1f6cb5d062aa2ce8d581942bbb960420d875ba',
+  paymasterToken: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' }, // USDT
   transferMaxFee: 100000000000000 // Optional: Maximum fee in wei
+})
+
+// Or use native coins mode (no paymaster needed)
+const nativeWallet = new WalletManagerEvmErc4337(seedPhrase, {
+  chainId: 1,
+  provider: 'https://eth-mainnet.g.alchemy.com/v2/your-api-key',
+  bundlerUrl: 'https://api.stackup.sh/v1/bundler/your-api-key',
+  entryPointAddress: '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789',
+  safeModulesVersion: '0.3.0',
+  useNativeCoins: true
 })
 
 // Get a full access account
@@ -121,11 +133,13 @@ For addresses where you don't have the seed phrase:
 ```javascript
 import { WalletAccountReadOnlyEvmErc4337 } from '@tetherto/wdk-wallet-evm-erc-4337'
 
-// Create a read-only account
+// Create a read-only account (native coins mode — no paymaster needed for quoting)
 const readOnlyAccount = new WalletAccountReadOnlyEvmErc4337('0x636e9c21f27d9401ac180666bf8DC0D3FcEb0D24', { // Smart contract wallet address
   provider: 'https://eth-mainnet.g.alchemy.com/v2/your-api-key',
   bundlerUrl: 'https://api.stackup.sh/v1/bundler/your-api-key',
-  entryPointAddress: '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789'
+  entryPointAddress: '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789',
+  safeModulesVersion: '0.3.0',
+  useNativeCoins: true
 })
 
 // Check native token balance
@@ -174,9 +188,9 @@ const transferResult = await account.transfer({
   token: '0xdAC17F958D2ee523a2206206994597C13D831ec7',      // USDT contract address
   recipient: '0x636e9c21f27d9401ac180666bf8DC0D3FcEb0D24',  // Recipient's address
   amount: 1000000n     // Amount in token's base units (1 USDT = 1000000 for 6 decimals)
-});
-console.log('UserOperation hash:', transferResult.hash);
-console.log('Transfer fee:', transferResult.fee, 'wei');
+})
+console.log('UserOperation hash:', transferResult.hash)
+console.log('Transfer fee:', transferResult.fee, 'wei')
 
 // Quote token transfer fee
 const transferQuote = await account.quoteTransfer({
@@ -185,6 +199,14 @@ const transferQuote = await account.quoteTransfer({
   amount: 1000000n     // Amount in token's base units
 })
 console.log('Transfer fee estimate:', transferQuote.fee, 'wei')
+
+// Transfer using native coins for gas (override constructor config)
+const nativeTransfer = await account.transfer({
+  token: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+  recipient: '0x636e9c21f27d9401ac180666bf8DC0D3FcEb0D24',
+  amount: 1000000n
+}, { useNativeCoins: true })
+console.log('Native gas transfer hash:', nativeTransfer.hash)
 ```
 
 ### Message Signing and Verification
@@ -248,29 +270,44 @@ new WalletManagerEvmErc4337(seed, config)
 
 **Parameters:**
 - `seed` (string | Uint8Array): BIP-39 mnemonic seed phrase or seed bytes
-- `config` (object): Configuration object
+- `config` (object): Configuration object. The configuration is a union of common fields and one of three gas payment modes.
+
+  **Common fields (required for all modes):**
+  - `chainId` (number): Chain ID of the target network
   - `provider` (string | Eip1193Provider): RPC endpoint URL or EIP-1193 provider instance
   - `bundlerUrl` (string): URL of the ERC-4337 bundler service
   - `entryPointAddress` (string): Address of the EntryPoint contract
-  - `factoryAddress` (string): Address of the account factory contract
-  - `chainId` (number): Chain ID of the target network
-  - `paymasterUrl` (string, optional): URL of the paymaster service
-  - `paymasterAddress` (string, optional): Address of the paymaster smart contract
-  - `isSponsored` (boolean, optional): Set to true to enable transaction sponsorship
-  - `sponsorshipPolicyId` (string, optional): Policy ID for sponsorship (Required if isSponsored is true)
-  - `paymasterToken` (object, optional): Paymaster token configuration (Required if isSponsored is false)
+  - `safeModulesVersion` (string): The safe modules version
+
+  **Paymaster token mode** (pay gas fees with an ERC-20 token via a paymaster):
+  - `paymasterUrl` (string): URL of the paymaster service
+  - `paymasterAddress` (string): Address of the paymaster smart contract
+  - `paymasterToken` (object): Paymaster token configuration
     - `address` (string): Token contract address
-  - `transferMaxFee` (number | bigint, optional): Maximum fee amount for transfer operations (in wei)
+  - `transferMaxFee` (number | bigint, optional): Maximum fee amount for transfer operations
+
+  **Sponsorship mode** (gas fees are sponsored by a paymaster):
+  - `isSponsored` (true): Enables transaction sponsorship
+  - `paymasterUrl` (string): URL of the paymaster service
+  - `sponsorshipPolicyId` (string, optional): Sponsorship policy ID
+
+  **Native coins mode** (pay gas fees with native coins, e.g. ETH):
+  - `useNativeCoins` (true): Enables native coin gas payment
+  - `transferMaxFee` (number | bigint, optional): Maximum fee amount for transfer operations
 
 **Example:**
 ```javascript
+// Paymaster token mode
 const wallet = new WalletManagerEvmErc4337(seedPhrase, {
+  chainId: 1,
   provider: 'https://eth-mainnet.g.alchemy.com/v2/your-api-key',
   bundlerUrl: 'https://api.stackup.sh/v1/bundler/your-api-key',
   entryPointAddress: '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789',
-  factoryAddress: '0x3F51274DfD7c51Ac1C4C798B21f295611560d511',
-  chainId: 1,
-  transferMaxFee: '100000000000000' // Maximum fee in wei
+  safeModulesVersion: '0.3.0',
+  paymasterUrl: 'https://api.paymaster.com',
+  paymasterAddress: '0x8b1f6cb5d062aa2ce8d581942bbb960420d875ba',
+  paymasterToken: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' },
+  transferMaxFee: 100000000000000n
 })
 ```
 
@@ -359,19 +396,7 @@ new WalletAccountEvmErc4337(seed, path, config)
 **Parameters:**
 - `seed` (string | Uint8Array): BIP-39 mnemonic seed phrase or seed bytes
 - `path` (string): BIP-44 derivation path (e.g., "0'/0/0")
-- `config` (object): Configuration object
-  - `provider` (string | Eip1193Provider): RPC endpoint URL or EIP-1193 provider instance
-  - `bundlerUrl` (string): URL of the ERC-4337 bundler service
-  - `entryPointAddress` (string): Address of the EntryPoint contract
-  - `factoryAddress` (string): Address of the account factory contract
-  - `chainId` (number): Chain ID of the target network
-  - `paymasterUrl` (string, optional): URL of the paymaster service
-  - `paymasterAddress` (string, optional): Address of the paymaster smart contract
-  - `isSponsored` (boolean, optional): Set to true to enable transaction sponsorship
-  - `sponsorshipPolicyId` (string, optional): Policy ID for sponsorship (Required if isSponsored is true)
-  - `paymasterToken` (object, optional): Paymaster token configuration (Required if isSponsored is false)
-    - `address` (string): Token contract address
-  - `transferMaxFee` (number | bigint, optional): Maximum fee amount for transfer operations (in wei)
+- `config` (object): Configuration object. Same configuration union as `WalletManagerEvmErc4337` — see [constructor parameters](#constructor) for the full description of common fields and the three gas payment modes (paymaster token, sponsorship, native coins).
 
 #### Methods
 
@@ -428,22 +453,24 @@ const isValid = await account.verify('Hello ERC-4337!', signature)
 console.log('Signature valid:', isValid)
 ```
 
-##### `sendTransaction(tx)`
+##### `sendTransaction(tx, config)`
 Sends a transaction via UserOperation through the ERC-4337 bundler.
 
 **Parameters:**
-- `tx` (object): The transaction object
+- `tx` (object | object[]): The transaction object, or an array of multiple transactions to send in batch.
   - `to` (string): Recipient address
   - `value` (number | bigint): Amount in wei
   - `data` (string, optional): Transaction data in hex format
   - `gasLimit` (number | bigint, optional): Maximum gas units for the UserOperation
   - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
-  - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
   - `maxPriorityFeePerGas` (number | bigint, optional): EIP-1559 max priority fee per gas in wei
-- `config` (object, optional): Configuration override. This object replaces the sponsorship/paymaster configuration context entirely (e.g. switching from token payment to sponsorship).
+- `config` (object, optional): If set, overrides the given configuration options. The provided fields are merged with the constructor configuration (i.e. only the specified properties are overridden). The merged configuration is validated to ensure all required fields for the resulting gas payment mode are present. Accepts any combination of fields from `EvmErc4337WalletPaymasterTokenConfig`, `EvmErc4337WalletSponsorshipPolicyConfig`, or `EvmErc4337WalletNativeCoinsConfig`.
   - `isSponsored` (boolean, optional): Override sponsorship setting
-  - `sponsorshipPolicyId` (string, optional): Override policy ID
+  - `useNativeCoins` (boolean, optional): Override to use native coins for gas
+  - `paymasterUrl` (string, optional): Override paymaster service URL
+  - `paymasterAddress` (string, optional): Override paymaster smart contract address
   - `paymasterToken` (object, optional): Override paymaster token
+  - `sponsorshipPolicyId` (string, optional): Override sponsorship policy ID
 
 **Returns:** `Promise<{hash: string, fee: bigint}>` - Object containing UserOperation hash and total fee (in wei)
 
@@ -458,7 +485,7 @@ const result = await account.sendTransaction({
 console.log('UserOperation hash:', result.hash)
 console.log('Total fee paid:', result.fee, 'wei')
 
-// Send sponsored transaction
+// Send sponsored transaction (overrides constructor config)
 const sponsoredResult = await account.sendTransaction({
   to: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
   value: 1000000000000000000n
@@ -467,19 +494,23 @@ const sponsoredResult = await account.sendTransaction({
   sponsorshipPolicyId: 'POLICY_ID'
 })
 console.log('Sponsored hash:', sponsoredResult.hash)
+
+// Send transaction using native coins for gas
+const nativeResult = await account.sendTransaction({
+  to: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
+  value: 1000000000000000000n
+}, {
+  useNativeCoins: true
+})
+console.log('Native gas hash:', nativeResult.hash)
 ```
 
-##### `quoteSendTransaction(tx)`
+##### `quoteSendTransaction(tx, config)`
 Estimates the fee for a UserOperation without submitting it to the bundler.
 
 **Parameters:**
-- `tx` (object): Same as sendTransaction parameters
-  - `to` (string): Recipient address
-  - `value` (number | bigint): Amount in wei
-  - `data` (string, optional): Transaction data in hex format
-  - `gasLimit` (number | bigint, optional): Maximum gas units
-  - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
-  - `maxPriorityFeePerGas` (number | bigint, optional): EIP-1559 max priority fee per gas in wei
+- `tx` (object | object[]): Same as sendTransaction `tx` parameter.
+- `config` (object, optional): Same as sendTransaction `config` parameter — overrides the given configuration options by merging with the constructor configuration.
 
 **Returns:** `Promise<{fee: bigint}>` - Object containing estimated total fee (in wei)
 
@@ -491,70 +522,74 @@ const quote = await account.quoteSendTransaction({
 })
 console.log('Estimated UserOperation fee:', quote.fee, 'wei')
 console.log('Estimated fee in ETH:', Number(quote.fee) / 1e18)
+
+// Quote with native coins gas payment
+const nativeQuote = await account.quoteSendTransaction({
+  to: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
+  value: 1000000000000000000n
+}, { useNativeCoins: true })
+console.log('Estimated native gas fee:', nativeQuote.fee, 'wei')
 ```
 
-##### `transfer(options)`
+##### `transfer(options, config)`
 Transfers ERC20 tokens via UserOperation through the bundler.
 
 **Parameters:**
 - `options` (object): Transfer options
-  - `to` (string): Recipient address
-  - `tokenAddress` (string): ERC20 token contract address
-  - `value` (number | bigint): Amount in token's smallest unit
-  - `gasLimit` (number | bigint, optional): Maximum gas units
-  - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
-  - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
-  - `maxPriorityFeePerGas` (number | bigint, optional): EIP-1559 max priority fee per gas in wei
-- `config` (object, optional): Configuration override. This object replaces the sponsorship/paymaster configuration context entirely (e.g. switching from token payment to sponsorship).
-  - `isSponsored` (boolean, optional): Override sponsorship setting
-  - `sponsorshipPolicyId` (string, optional): Override policy ID
-  - `paymasterToken` (object, optional): Override paymaster token
+  - `token` (string): ERC20 token contract address
+  - `recipient` (string): Recipient address
+  - `amount` (number | bigint): Amount in token's smallest unit
+- `config` (object, optional): Same as sendTransaction `config` parameter — overrides the given configuration options by merging with the constructor configuration.
 
 **Returns:** `Promise<{hash: string, fee: bigint}>` - Object containing UserOperation hash and fee (in wei)
 
 **Example:**
 ```javascript
 const result = await account.transfer({
-  to: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
-  tokenAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT
-  value: 1000000n, // 1 USDT (6 decimals)
-  maxFeePerGas: 20000000000n
+  token: '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT
+  recipient: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
+  amount: 1000000n // 1 USDT (6 decimals)
 })
 console.log('UserOperation hash:', result.hash)
 console.log('Gas fee paid:', result.fee, 'wei')
 
 // Send sponsored token transfer
 const sponsoredTransfer = await account.transfer({
-  to: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
-  tokenAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-  value: 1000000n
+  token: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+  recipient: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
+  amount: 1000000n
 }, {
   isSponsored: true,
   sponsorshipPolicyId: 'POLICY_ID'
 })
 console.log('Sponsored transfer hash:', sponsoredTransfer.hash)
+
+// Transfer using native coins for gas
+const nativeTransfer = await account.transfer({
+  token: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+  recipient: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
+  amount: 1000000n
+}, {
+  useNativeCoins: true
+})
+console.log('Native gas transfer hash:', nativeTransfer.hash)
 ```
 
-##### `quoteTransfer(options)`
+##### `quoteTransfer(options, config)`
 Estimates the fee for an ERC20 token transfer UserOperation without submitting it.
 
 **Parameters:**
-- `options` (object): Same as transfer parameters
-  - `to` (string): Recipient address
-  - `tokenAddress` (string): ERC20 token contract address
-  - `value` (number | bigint): Amount in token's smallest unit
-  - `gasLimit` (number | bigint, optional): Maximum gas units
-  - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
-  - `maxPriorityFeePerGas` (number | bigint, optional): EIP-1559 max priority fee per gas in wei
+- `options` (object): Same as transfer `options` parameter.
+- `config` (object, optional): Same as sendTransaction `config` parameter — overrides the given configuration options by merging with the constructor configuration.
 
 **Returns:** `Promise<{fee: bigint}>` - Object containing estimated fee (in wei)
 
 **Example:**
 ```javascript
 const quote = await account.quoteTransfer({
-  to: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
-  tokenAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT
-  value: 1000000n // 1 USDT (6 decimals)
+  token: '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT
+  recipient: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
+  amount: 1000000n // 1 USDT (6 decimals)
 })
 console.log('Estimated transfer fee:', quote.fee, 'wei')
 ```
@@ -619,10 +654,7 @@ new WalletAccountReadOnlyEvmErc4337(address, config)
 
 **Parameters:**
 - `address` (string): The smart contract wallet address
-- `config` (object): Configuration object
-  - `provider` (string | Eip1193Provider): RPC endpoint URL or EIP-1193 provider instance
-  - `bundlerUrl` (string): URL of the ERC-4337 bundler service
-  - `entryPointAddress` (string): Address of the EntryPoint contract
+- `config` (object): Configuration object. Same configuration union as `WalletManagerEvmErc4337` (excluding `transferMaxFee`) — see [constructor parameters](#constructor) for the full description of common fields and the three gas payment modes.
 
 #### Methods
 
@@ -631,8 +663,9 @@ new WalletAccountReadOnlyEvmErc4337(address, config)
 | `predictSafeAddress(owner, config)` | Static method to predict Safe address for an EOA | `string` |
 | `getBalance()` | Returns the native token balance (in wei) | `Promise<bigint>` |
 | `getTokenBalance(tokenAddress)` | Returns the balance of a specific ERC20 token | `Promise<bigint>` |
-| `quoteSendTransaction(tx)` | Estimates the fee for a UserOperation | `Promise<{fee: bigint}>` |
-| `quoteTransfer(options)` | Estimates the fee for an ERC20 transfer | `Promise<{fee: bigint}>` |
+| `getPaymasterTokenBalance()` | Returns the paymaster token balance | `Promise<bigint>` |
+| `quoteSendTransaction(tx, config)` | Estimates the fee for a UserOperation | `Promise<{fee: bigint}>` |
+| `quoteTransfer(options, config)` | Estimates the fee for an ERC20 transfer | `Promise<{fee: bigint}>` |
 | `verify(message, signature)` | Verifies a message signature | `Promise<boolean>` |
 
 ##### `predictSafeAddress(owner, config)` (static)
@@ -682,17 +715,15 @@ const usdtBalance = await readOnlyAccount.getTokenBalance('0xdAC17F958D2ee523a22
 console.log('Smart account USDT balance:', Number(usdtBalance) / 1e6)
 ```
 
-##### `quoteSendTransaction(tx)`
+##### `quoteSendTransaction(tx, config)`
 Estimates the fee for a UserOperation without submitting it to the bundler.
 
 **Parameters:**
-- `tx` (object): The transaction object
+- `tx` (object | object[]): The transaction object, or an array of multiple transactions to send in batch.
   - `to` (string): Recipient address
   - `value` (number | bigint): Amount in wei
   - `data` (string, optional): Transaction data in hex format
-  - `gasLimit` (number | bigint, optional): Maximum gas units
-  - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
-  - `maxPriorityFeePerGas` (number | bigint, optional): EIP-1559 max priority fee per gas in wei
+- `config` (object, optional): If set, overrides the given configuration options by merging with the constructor configuration. See [`sendTransaction` config](#sendtransactiontx-config) for the full list of overridable fields.
 
 **Returns:** `Promise<{fee: bigint}>` - Object containing estimated total UserOperation fee (in wei)
 
@@ -706,26 +737,24 @@ console.log('Estimated UserOperation fee:', quote.fee, 'wei')
 console.log('Estimated fee in ETH:', Number(quote.fee) / 1e18)
 ```
 
-##### `quoteTransfer(options)`
+##### `quoteTransfer(options, config)`
 Estimates the fee for an ERC20 token transfer UserOperation without submitting it to the bundler.
 
 **Parameters:**
 - `options` (object): Transfer options
-  - `to` (string): Recipient address
-  - `tokenAddress` (string): ERC20 token contract address
-  - `value` (number | bigint): Amount in token's smallest unit
-  - `gasLimit` (number | bigint, optional): Maximum gas units
-  - `maxFeePerGas` (number | bigint, optional): EIP-1559 max fee per gas in wei
-  - `maxPriorityFeePerGas` (number | bigint, optional): EIP-1559 max priority fee per gas in wei
+  - `token` (string): ERC20 token contract address
+  - `recipient` (string): Recipient address
+  - `amount` (number | bigint): Amount in token's smallest unit
+- `config` (object, optional): Same as `quoteSendTransaction` config parameter.
 
 **Returns:** `Promise<{fee: bigint}>` - Object containing estimated UserOperation fee (in wei)
 
 **Example:**
 ```javascript
 const quote = await readOnlyAccount.quoteTransfer({
-  to: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
-  tokenAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT
-  value: 1000000n // 1 USDT (6 decimals)
+  token: '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT
+  recipient: '0x742C4265F5Ba4F8E0842e2b9EfE66302F7a13B6F',
+  amount: 1000000n // 1 USDT (6 decimals)
 })
 console.log('Estimated transfer UserOperation fee:', quote.fee, 'wei')
 console.log('Estimated fee in ETH:', Number(quote.fee) / 1e18)

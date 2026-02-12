@@ -228,6 +228,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     this._ownerAccount.dispose()
   }
 
+  /**
+   * Returns the safe's erc-4337 pack of the account.
+   *
+   * @protected
+   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The configuration object. Defaults to this._config if not provided.
+   * @returns {Promise<Safe4337Pack>} The safe's erc-4337 pack.
+   */
   async _getSafe4337Pack (config = this._config) {
     const { isSponsored, useNativeCoins, paymasterUrl, paymasterAddress, paymasterToken } = config
 
@@ -256,12 +263,14 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
         customContracts: {
           entryPointAddress: config.entryPointAddress
         },
-        paymasterOptions: useNativeCoins ? undefined : {
-          paymasterUrl,
-          paymasterAddress,
-          paymasterTokenAddress: paymasterToken?.address,
-          skipApproveTransaction: true
-        }
+        paymasterOptions: useNativeCoins
+          ? undefined
+          : {
+              paymasterUrl,
+              paymasterAddress,
+              paymasterTokenAddress: paymasterToken?.address,
+              skipApproveTransaction: true
+            }
       })
 
       this._safe4337Packs.set(cacheKey, safe4337Pack)

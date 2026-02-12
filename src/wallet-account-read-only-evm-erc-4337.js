@@ -358,12 +358,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
         customContracts: {
           entryPointAddress: config.entryPointAddress
         },
-        paymasterOptions: useNativeCoins ? undefined : {
-          paymasterUrl,
-          paymasterAddress,
-          paymasterTokenAddress: paymasterToken?.address,
-          skipApproveTransaction: true
-        }
+        paymasterOptions: useNativeCoins
+          ? undefined
+          : {
+              paymasterUrl,
+              paymasterAddress,
+              paymasterTokenAddress: paymasterToken?.address,
+              skipApproveTransaction: true
+            }
       })
 
       this._safe4337Packs.set(cacheKey, safe4337Pack)

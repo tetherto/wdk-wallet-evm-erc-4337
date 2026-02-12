@@ -76,6 +76,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * Disposes the wallet account, erasing the private key from the memory.
      */
     dispose(): void;
+    /**
+     * Returns the safe's erc-4337 pack of the account.
+     *
+     * @protected
+     * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The configuration object. Defaults to this._config if not provided.
+     * @returns {Promise<Safe4337Pack>} The safe's erc-4337 pack.
+     */
     _getSafe4337Pack(config?: EvmErc4337WalletConfig): Promise<Safe4337Pack>;
     /** @private */
     private _sendUserOperation;

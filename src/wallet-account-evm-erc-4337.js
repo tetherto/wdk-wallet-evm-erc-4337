@@ -240,7 +240,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     } else if (isSponsored) {
       cacheKey = `sponsored:${paymasterUrl}`
     } else {
-      cacheKey = `paymaster:${paymasterUrl}:${paymasterAddress}`
+      cacheKey = `paymaster:${paymasterUrl}:${paymasterAddress}:${paymasterToken?.address}`
     }
 
     if (!this._safe4337Packs.has(cacheKey)) {

@@ -222,6 +222,9 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    */
   dispose () {
     this._ownerAccount.dispose()
+    this._safe4337Packs.clear()
+    this._ownerAccount = null
+    this._feeEstimator = undefined
   }
 
   /**
@@ -240,7 +243,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     } else if (isSponsored) {
       cacheKey = `sponsored:${paymasterUrl}`
     } else {
-      cacheKey = `paymaster:${paymasterUrl}:${paymasterAddress}`
+      cacheKey = `paymaster:${paymasterUrl}:${paymasterAddress}:${paymasterToken?.address}`
     }
 
     if (!this._safe4337Packs.has(cacheKey)) {

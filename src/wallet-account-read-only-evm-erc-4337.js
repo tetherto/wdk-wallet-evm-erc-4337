@@ -298,7 +298,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
     return await evmReadOnlyAccount.verifyTypedData(typedData, signature)
   }
-  
+
   /**
    * Validates the configuration to ensure all required fields are present.
    *

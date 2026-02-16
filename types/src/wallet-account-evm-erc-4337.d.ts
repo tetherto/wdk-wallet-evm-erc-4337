@@ -53,7 +53,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * Approves a specific amount of tokens to a spender.
      *
      * @param {ApproveOptions} options - The approve options.
-     * @returns {Promise<TransactionResult>} - The transaction’s result.
+     * @returns {Promise<TransactionResult>} - The transaction's result.
      * @throws {Error} - If trying to approve usdts on ethereum with allowance not equal to zero (due to the usdt allowance reset requirement).
      */
     approve(options: ApproveOptions): Promise<TransactionResult>;
@@ -85,6 +85,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     dispose(): void;
     /**
      * Returns the safe's erc-4337 pack of the account.
+     * Extends parent implementation by adding signer for transaction signing.
      *
      * @protected
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The configuration object. Defaults to this._config if not provided.

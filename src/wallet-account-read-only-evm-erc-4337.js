@@ -170,6 +170,18 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
+   * Returns the account balances for multiple tokens.
+   *
+   * @param {string[]} tokenAddresses - The smart contract addresses of the tokens.
+   * @returns {Promise<Record<string, bigint>>} A mapping of token addresses to their balances (in base units).
+   */
+  async getTokenBalances (tokenAddresses) {
+    const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
+
+    return await evmReadOnlyAccount.getTokenBalances(tokenAddresses)
+  }
+
+  /**
    * Returns the account's balance for the paymaster token provided in the wallet account configuration.
    *
    * @returns {Promise<bigint>} The paymaster token balance (in base unit).

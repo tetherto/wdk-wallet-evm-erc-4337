@@ -59,6 +59,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     */
     getTokenBalance(tokenAddress: string): Promise<bigint>;
     /**
+     * Returns the account balances for multiple tokens.
+     *
+     * @param {string[]} tokenAddresses - The smart contract addresses of the tokens.
+     * @returns {Promise<Record<string, bigint>>} A mapping of token addresses to their balances (in base units).
+     */
+    getTokenBalances(tokenAddresses: string[]): Promise<Record<string, bigint>>;
+    /**
      * Returns the account's balance for the paymaster token provided in the wallet account configuration.
      *
      * @returns {Promise<bigint>} The paymaster token balance (in base unit).

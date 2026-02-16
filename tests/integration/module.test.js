@@ -369,6 +369,21 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     expect(isValid).toBe(true)
   }, TIMEOUT)
 
+  test('should fetch multiple token balances via getTokenBalances multicall', async () => {
+    const account = await wallet.getAccountByPath("0'/0/0")
+
+    const balances = await account.getTokenBalances([
+      testToken.target,
+      MOCK_PAYMASTER_TOKEN_ADDRESS
+    ])
+
+    const expectedTestTokenBalance = await balanceOf(testToken, ACCOUNT0.safeAddress)
+    const expectedPaymasterTokenBalance = await balanceOf(mockPaymasterToken, ACCOUNT0.safeAddress)
+
+    expect(balances[testToken.target]).toBe(expectedTestTokenBalance)
+    expect(balances[MOCK_PAYMASTER_TOKEN_ADDRESS]).toBe(expectedPaymasterTokenBalance)
+  }, TIMEOUT)
+
   test('should dispose the wallet and erase the private keys of the accounts', async () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 

@@ -27,10 +27,15 @@
 /** @typedef {import('@tetherto/wdk-wallet-evm').ApproveOptions} ApproveOptions */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').TypedData} TypedData */
-/** @typedef {import('ethers').TypedDataDomain} TypedDataDomain */
-/** @typedef {import('ethers').TypedDataField} TypedDataField */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TypedDataDomain} TypedDataDomain */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TypedDataField} TypedDataField */
 
 /** @typedef {import('./src/wallet-manager-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
+
+/** @typedef {import('./src/wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletCommonConfig} EvmErc4337WalletCommonConfig */
+/** @typedef {import('./src/wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletPaymasterTokenConfig} EvmErc4337WalletPaymasterTokenConfig */
+/** @typedef {import('./src/wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletSponsorshipPolicyConfig} EvmErc4337WalletSponsorshipPolicyConfig */
+/** @typedef {import('./src/wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletNativeCoinsConfig} EvmErc4337WalletNativeCoinsConfig */
 
 export { default } from './src/wallet-manager-evm-erc-4337.js'
 

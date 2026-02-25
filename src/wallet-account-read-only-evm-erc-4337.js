@@ -35,6 +35,8 @@ import { ConfigurationError } from './errors.js'
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').EvmTransactionReceipt} EvmTransactionReceipt */
 
+/** @typedef {import('@tetherto/wdk-wallet-evm').TypedData} TypedData */
+
 /**
  * @typedef {Object} EvmErc4337WalletCommonConfig
  * @property {number} chainId - The blockchain's id (e.g., 1 for ethereum).
@@ -168,6 +170,18 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
+   * Returns the account balances for multiple tokens.
+   *
+   * @param {string[]} tokenAddresses - The smart contract addresses of the tokens.
+   * @returns {Promise<Record<string, bigint>>} A mapping of token addresses to their balances (in base units).
+   */
+  async getTokenBalances (tokenAddresses) {
+    const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
+
+    return await evmReadOnlyAccount.getTokenBalances(tokenAddresses)
+  }
+
+  /**
    * Returns the account's balance for the paymaster token provided in the wallet account configuration.
    *
    * @returns {Promise<bigint>} The paymaster token balance (in base unit).
@@ -282,6 +296,19 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   async verify (message, signature) {
     const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, this._config)
     return await evmReadOnlyAccount.verify(message, signature)
+  }
+
+  /**
+   * Verifies a typed data signature.
+   *
+   * @param {TypedData} typedData - The typed data to verify.
+   * @param {string} signature - The signature to verify.
+   * @returns {Promise<boolean>} True if the signature is valid.
+   */
+  async verifyTypedData (typedData, signature) {
+    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, this._config)
+
+    return await evmReadOnlyAccount.verifyTypedData(typedData, signature)
   }
 
   /**

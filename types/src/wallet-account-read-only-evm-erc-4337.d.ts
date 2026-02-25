@@ -59,6 +59,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     */
     getTokenBalance(tokenAddress: string): Promise<bigint>;
     /**
+     * Returns the account balances for multiple tokens.
+     *
+     * @param {string[]} tokenAddresses - The smart contract addresses of the tokens.
+     * @returns {Promise<Record<string, bigint>>} A mapping of token addresses to their balances (in base units).
+     */
+    getTokenBalances(tokenAddresses: string[]): Promise<Record<string, bigint>>;
+    /**
      * Returns the account's balance for the paymaster token provided in the wallet account configuration.
      *
      * @returns {Promise<bigint>} The paymaster token balance (in base unit).
@@ -121,6 +128,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     protected _validateConfig(config: Omit<EvmErc4337WalletConfig, "transferMaxFee">): void;
     /**
+     * Verifies a typed data signature.
+     *
+     * @param {TypedData} typedData - The typed data to verify.
+     * @param {string} signature - The signature to verify.
+     * @returns {Promise<boolean>} True if the signature is valid.
+     */
+    verifyTypedData(typedData: TypedData, signature: string): Promise<boolean>;
+    /**
      * Returns the safe's erc-4337 pack of the account.
      *
      * @protected
@@ -152,6 +167,7 @@ export type TransactionResult = import("@tetherto/wdk-wallet-evm").TransactionRe
 export type TransferOptions = import("@tetherto/wdk-wallet-evm").TransferOptions;
 export type TransferResult = import("@tetherto/wdk-wallet-evm").TransferResult;
 export type EvmTransactionReceipt = import("@tetherto/wdk-wallet-evm").EvmTransactionReceipt;
+export type TypedData = import("@tetherto/wdk-wallet-evm").TypedData;
 export type EvmErc4337WalletCommonConfig = {
     /**
      * - The blockchain's id (e.g., 1 for ethereum).

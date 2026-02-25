@@ -43,10 +43,17 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      */
     sign(message: string): Promise<string>;
     /**
+     * Signs typed data according to EIP-712.
+     *
+     * @param {TypedData} typedData - The typed data to sign.
+     * @returns {Promise<string>} The typed data signature.
+     */
+    signTypedData(typedData: TypedData): Promise<string>;
+    /**
      * Approves a specific amount of tokens to a spender.
      *
      * @param {ApproveOptions} options - The approve options.
-     * @returns {Promise<TransactionResult>} - The transaction’s result.
+     * @returns {Promise<TransactionResult>} - The transaction's result.
      * @throws {Error} - If trying to approve usdts on ethereum with allowance not equal to zero (due to the usdt allowance reset requirement).
      */
     approve(options: ApproveOptions): Promise<TransactionResult>;
@@ -78,6 +85,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     dispose(): void;
     /**
      * Returns the safe's erc-4337 pack of the account.
+     * Extends parent implementation by adding signer for transaction signing.
      *
      * @protected
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The configuration object. Defaults to this._config if not provided.
@@ -95,6 +103,7 @@ export type TransactionResult = import("@tetherto/wdk-wallet-evm").TransactionRe
 export type TransferOptions = import("@tetherto/wdk-wallet-evm").TransferOptions;
 export type TransferResult = import("@tetherto/wdk-wallet-evm").TransferResult;
 export type ApproveOptions = import("@tetherto/wdk-wallet-evm").ApproveOptions;
+export type TypedData = import("./wallet-account-read-only-evm-erc-4337.js").TypedData;
 export type EvmErc4337WalletConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletConfig;
 export type EvmErc4337WalletPaymasterTokenConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletPaymasterTokenConfig;
 export type EvmErc4337WalletSponsorshipPolicyConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletSponsorshipPolicyConfig;

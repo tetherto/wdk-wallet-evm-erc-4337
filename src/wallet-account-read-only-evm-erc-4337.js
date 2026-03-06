@@ -14,11 +14,15 @@
 
 'use strict'
 
+import { JsonRpcProvider } from 'ethers'
+
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 
 import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
 import { Safe4337Pack, GenericFeeEstimator, PimlicoFeeEstimator } from '@tetherto/wdk-safe-relay-kit'
+
+import FailoverProvider from '@tetherto/wdk-failover-provider'
 
 import { ConfigurationError } from './errors.js'
 
@@ -40,7 +44,8 @@ import { ConfigurationError } from './errors.js'
 /**
  * @typedef {Object} EvmErc4337WalletCommonConfig
  * @property {number} chainId - The blockchain's id (e.g., 1 for ethereum).
- * @property {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
+ * @property {string | Eip1193Provider | Array<string | Eip1193Provider>} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
+ * @property {number} [retries] - The number of retries in the failover mechanism.
  * @property {string} bundlerUrl - The url of the bundler service.
  * @property {string} entryPointAddress - The address of the entry point smart contract.
  * @property {string} safeModulesVersion - The safe modules version.
@@ -124,6 +129,46 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
     /** @private */
     this._ownerAccountAddress = address
+
+    /**
+     * An ethers provider to interact with a node of the blockchain. Note that Safe4337Pack only supports the Eip1193Provider.
+     *
+     * @protected
+     * @type {Eip1193Provider | undefined}
+     */
+    this._provider = undefined
+
+    const { provider, retries = 3 } = config
+
+    /**
+     * Wrap string (i.e. JsonRpcProvider) and Eip1193Provider to Eip1193Provider
+     * @param {string | Eip1193Provider} provider
+     * @returns
+     */
+    function wrapEip1193Provider (provider) {
+      return typeof provider === 'string'
+        ? {
+            provider: new JsonRpcProvider(provider),
+            request ({ method, params }) {
+              return this.provider.send(method, params ?? [])
+            }
+          }
+        : provider
+    }
+
+    if (Array.isArray(provider)) {
+      this._provider = provider
+        .reduce(
+          (failover, candidate) =>
+            failover.addProvider(wrapEip1193Provider(candidate)),
+          new FailoverProvider({ retries })
+        )
+        .initialize()
+    } else if (provider) {
+      this._provider = wrapEip1193Provider(provider)
+    } else {
+      this._provider = undefined
+    }
   }
 
   /**
@@ -373,7 +418,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
     if (!this._safe4337Packs.has(cacheKey)) {
       const safe4337Pack = await Safe4337Pack.init({
-        provider: config.provider,
+        provider: this._provider,
         bundlerUrl: config.bundlerUrl,
         safeModulesVersion: config.safeModulesVersion,
         options: {
@@ -439,7 +484,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
         const chainId = await this._getChainId()
 
         this._feeEstimator = new GenericFeeEstimator(
-          this._config.provider,
+          this.provider,
           `0x${chainId.toString(16)}`
         )
       }

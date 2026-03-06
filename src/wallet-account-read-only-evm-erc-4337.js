@@ -136,39 +136,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @protected
      * @type {Eip1193Provider | undefined}
      */
-    this._provider = undefined
-
-    const { provider, retries = 3 } = config
-
-    /**
-     * Wrap string (i.e. JsonRpcProvider) and Eip1193Provider to Eip1193Provider
-     * @param {string | Eip1193Provider} provider
-     * @returns
-     */
-    function wrapEip1193Provider (provider) {
-      return typeof provider === 'string'
-        ? {
-            provider: new JsonRpcProvider(provider),
-            request ({ method, params }) {
-              return this.provider.send(method, params ?? [])
-            }
-          }
-        : provider
-    }
-
-    if (Array.isArray(provider)) {
-      this._provider = provider
-        .reduce(
-          (failover, candidate) =>
-            failover.addProvider(wrapEip1193Provider(candidate)),
-          new FailoverProvider({ retries })
-        )
-        .initialize()
-    } else if (provider) {
-      this._provider = wrapEip1193Provider(provider)
-    } else {
-      this._provider = undefined
-    }
+    this._provider = this._creatFailoverProvider(this._config)
   }
 
   /**
@@ -189,6 +157,49 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     })
 
     return safeAddress
+  }
+
+  /**
+   * Wrap string (i.e. JsonRpcProvider) and Eip1193Provider to Eip1193Provider
+   * 
+   * @private
+   * @param {string | Eip1193Provider} provider
+   * @returns { Eip1193Provider } A wrapped Eip1193Provider instance.
+   */
+  _wrapEip1193Provider (provider) {
+    return typeof provider === 'string'
+      ? {
+          provider: new JsonRpcProvider(provider),
+          request ({ method, params }) {
+            return this.provider.send(method, params ?? [])
+          }
+        }
+      : provider
+  }
+
+  /**
+   * Create a failover provider from the list of provider candidates.
+   * 
+   * @private
+   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
+   * @returns {Eip1193Provider | undefined}
+   */
+  _creatFailoverProvider (config = this._config) {
+    const { provider, retries = 3 } = config
+
+    if (Array.isArray(provider)) {
+      return provider
+        .reduce(
+          (failover, candidate) =>
+            failover.addProvider(this._wrapEip1193Provider(candidate)),
+          new FailoverProvider({ retries })
+        )
+        .initialize()
+    } else if (provider) {
+      return this._wrapEip1193Provider(provider)
+    } else {
+      return undefined
+    }
   }
 
   /**
@@ -418,7 +429,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
     if (!this._safe4337Packs.has(cacheKey)) {
       const safe4337Pack = await Safe4337Pack.init({
-        provider: this._provider,
+        provider: this._creatFailoverProvider(config),
         bundlerUrl: config.bundlerUrl,
         safeModulesVersion: config.safeModulesVersion,
         options: {

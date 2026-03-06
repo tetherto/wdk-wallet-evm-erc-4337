@@ -44,7 +44,7 @@ import { ConfigurationError } from './errors.js'
 /**
  * @typedef {Object} EvmErc4337WalletCommonConfig
  * @property {number} chainId - The blockchain's id (e.g., 1 for ethereum).
- * @property {string | Eip1193Provider | Array<string | Eip1193Provider>} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
+ * @property {string | Eip1193Provider | Array<string | Eip1193Provider>} provider - The url of the rpc provider, or an instance of a class that implements eip-1193. If it's a list of urls or instances, the provider failover strategy will be enabled.
  * @property {number} [retries] - The number of retries in the failover mechanism.
  * @property {string} bundlerUrl - The url of the bundler service.
  * @property {string} entryPointAddress - The address of the entry point smart contract.
@@ -160,10 +160,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Wrap string (i.e. JsonRpcProvider) and Eip1193Provider to Eip1193Provider
-   * 
+   *    * Wraps a string RPC URL or provider into an EIP-1193 compatible provider.
+   *
    * @private
-   * @param {string | Eip1193Provider} provider
+   * @param {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
    * @returns { Eip1193Provider } A wrapped Eip1193Provider instance.
    */
   _wrapEip1193Provider (provider) {
@@ -178,8 +178,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Create a failover provider from the list of provider candidates.
-   * 
+   * Creates a FailoverProvider from the configured providers. If only one provider is supplied, it is wrapped and returned.
+   *
    * @private
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
    * @returns {Eip1193Provider | undefined}
@@ -195,11 +195,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
           new FailoverProvider({ retries })
         )
         .initialize()
-    } else if (provider) {
-      return this._wrapEip1193Provider(provider)
-    } else {
-      return undefined
     }
+
+    if (provider) {
+      return this._wrapEip1193Provider(provider)
+    }
+
+    return undefined
   }
 
   /**
@@ -495,7 +497,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
         const chainId = await this._getChainId()
 
         this._feeEstimator = new GenericFeeEstimator(
-          this.provider,
+          this._config.provider,
           `0x${chainId.toString(16)}`
         )
       }

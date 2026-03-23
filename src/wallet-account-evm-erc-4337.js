@@ -40,8 +40,6 @@ import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-
 
 /** @typedef {import('@tetherto/wdk-safe-relay-kit').Safe4337Pack} Safe4337Pack */
 
-const FEE_TOLERANCE_COEFFICIENT = 120n
-
 const QUOTE_MAX_AGE_MS = 2 * 60 * 1_000
 
 const USDT_MAINNET_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
@@ -173,7 +171,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     const fee = this._getValidCachedFee() ?? (await this.quoteSendTransaction(tx, config)).fee
 
-    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
+    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : fee
 
     const hash = await this._sendUserOperation([tx].flat(), {
       ...mergedConfig,
@@ -207,7 +205,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
 
-    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
+    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : fee
 
     const hash = await this._sendUserOperation([tx], {
       ...mergedConfig,

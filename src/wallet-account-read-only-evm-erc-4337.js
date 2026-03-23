@@ -22,6 +22,8 @@ import { Safe4337Pack, GenericFeeEstimator, PimlicoFeeEstimator } from '@tethert
 
 import { ConfigurationError } from './errors.js'
 
+const FEE_TOLERANCE_COEFFICIENT = 120n
+
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
 /** @typedef {import('@tetherto/wdk-safe-relay-kit').UserOperationReceipt} UserOperationReceipt */
@@ -224,14 +226,16 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       return { fee: 0n }
     }
 
-    const fee = await this._getUserOperationGasCost([tx].flat(), {
+    const estimatedFee = await this._getUserOperationGasCost([tx].flat(), {
       ...mergedConfig,
       amountToApprove: useNativeCoins ? 0n : BigInt(Number.MAX_SAFE_INTEGER)
     })
 
-    this._lastQuote = { fee: BigInt(fee), createdAt: Date.now() }
+    const fee = BigInt(estimatedFee) * FEE_TOLERANCE_COEFFICIENT / 100n
 
-    return { fee: BigInt(fee) }
+    this._lastQuote = { fee, createdAt: Date.now() }
+
+    return { fee }
   }
 
   /**

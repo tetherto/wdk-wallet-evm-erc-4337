@@ -275,7 +275,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       return undefined
     }
 
-    if (JSON.stringify([tx].flat(), (_, v) => typeof v === 'bigint' ? v.toString() : v) !== quote.txKey) {
+    if (WalletAccountReadOnlyEvmErc4337._getTxKey(tx) !== quote.txKey) {
       return undefined
     }
 

@@ -92,6 +92,15 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @returns {Promise<Safe4337Pack>} The safe's erc-4337 pack.
      */
     protected _getSafe4337Pack(config?: EvmErc4337WalletConfig): Promise<Safe4337Pack>;
+    /**
+     * Returns the cached fee if it exists, is not expired, and matches the given transaction.
+     * Clears cache on match or expiry; preserves it on mismatch.
+     *
+     * @private
+     * @param {EvmTransaction | EvmTransaction[]} tx - The transaction to match against.
+     * @returns {bigint | undefined} The cached fee, or undefined if not available, expired, or mismatched.
+     */
+    private _getValidCachedFee;
     /** @private */
     private _sendUserOperation;
 }

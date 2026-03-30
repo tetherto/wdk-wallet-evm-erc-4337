@@ -22,6 +22,8 @@ import { Safe4337Pack, GenericFeeEstimator, PimlicoFeeEstimator } from '@tethert
 
 import { ConfigurationError } from './errors.js'
 
+const FEE_TOLERANCE_COEFFICIENT = 120n
+
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
 /** @typedef {import('@tetherto/wdk-safe-relay-kit').UserOperationReceipt} UserOperationReceipt */
@@ -36,6 +38,13 @@ import { ConfigurationError } from './errors.js'
 /** @typedef {import('@tetherto/wdk-wallet-evm').EvmTransactionReceipt} EvmTransactionReceipt */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').TypedData} TypedData */
+
+/**
+ * @typedef {Object} CachedQuote
+ * @property {bigint} fee - The estimated fee with tolerance buffer applied.
+ * @property {number} createdAt - The timestamp when the quote was created.
+ * @property {string} txKey - A serialized key of the transaction used for cache matching.
+ */
 
 /**
  * @typedef {Object} EvmErc4337WalletCommonConfig
@@ -113,6 +122,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @type {IFeeEstimator | undefined}
      */
     this._feeEstimator = undefined
+
+    /**
+     * Cached quote from the last fee estimation.
+     *
+     * @protected
+     * @type {CachedQuote | undefined}
+     */
+    this._lastQuote = undefined
 
     /**
      * The chain id.
@@ -199,6 +216,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   /**
    * Quotes the costs of a send transaction operation.
    *
+   * The result is cached internally for up to 2 minutes. If `sendTransaction` is called with the
+   * same transaction within that window, the cached fee is reused without an additional RPC round-trip.
+   *
    * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
    * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
@@ -216,16 +236,23 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       return { fee: 0n }
     }
 
-    const fee = await this._getUserOperationGasCost([tx].flat(), {
+    const estimatedFee = await this._getUserOperationGasCost([tx].flat(), {
       ...mergedConfig,
       amountToApprove: useNativeCoins ? 0n : BigInt(Number.MAX_SAFE_INTEGER)
     })
 
-    return { fee: BigInt(fee) }
+    const fee = BigInt(estimatedFee) * FEE_TOLERANCE_COEFFICIENT / 100n
+
+    this._lastQuote = { fee, createdAt: Date.now(), txKey: WalletAccountReadOnlyEvmErc4337._getTxKey(tx) }
+
+    return { fee }
   }
 
   /**
    * Quotes the costs of a transfer operation.
+   *
+   * The result is cached internally for up to 2 minutes. If `transfer` is called with the
+   * same transaction within that window, the cached fee is reused without an additional RPC round-trip.
    *
    * @param {TransferOptions} options - The transfer's options.
    * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
@@ -446,6 +473,17 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     }
 
     return this._feeEstimator
+  }
+
+  /**
+   * Returns a serialized key for transaction cache matching.
+   *
+   * @protected
+   * @param {EvmTransaction | EvmTransaction[]} tx - The transaction(s) to serialize.
+   * @returns {string} The serialized transaction key.
+   */
+  static _getTxKey (tx) {
+    return JSON.stringify([tx].flat(), (_, v) => typeof v === 'bigint' ? v.toString() : v)
   }
 
   /** @private */

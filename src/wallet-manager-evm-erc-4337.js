@@ -59,24 +59,24 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
     const { provider, retries = 3 } = config
 
     if (Array.isArray(provider)) {
-      this._provider = provider
-        .reduce(
-          (failover, candidate) =>
-            failover.addProvider(
-              typeof candidate === 'string'
-                ? new JsonRpcProvider(candidate)
-                : new BrowserProvider(candidate)
-            ),
-          new FailoverProvider({ retries })
-        )
-        .initialize()
+      if (provider.length > 1) {
+        this._provider = provider
+          .reduce(
+            (failover, entry) => {
+              const option = typeof candidate === 'string'
+                ? new JsonRpcProvider(entry)
+                : new BrowserProvider(entry)
+              return failover.addProvider(option)
+            },
+            new FailoverProvider({ retries })
+          )
+          .initialize()
+      }
     } else if (provider) {
       this._provider =
         typeof provider === 'string'
           ? new JsonRpcProvider(provider)
           : new BrowserProvider(provider)
-    } else {
-      this._provider = undefined
     }
   }
 

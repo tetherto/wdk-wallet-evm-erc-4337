@@ -44,8 +44,8 @@ import { ConfigurationError } from './errors.js'
 /**
  * @typedef {Object} EvmErc4337WalletCommonConfig
  * @property {number} chainId - The blockchain's id (e.g., 1 for ethereum).
- * @property {string | Eip1193Provider | Array<string | Eip1193Provider>} provider - The url of the rpc provider, or an instance of a class that implements eip-1193. If it's a list of urls or instances, the provider failover strategy will be enabled.
- * @property {number} [retries] - The number of retries in the failover mechanism.
+ * @property {string | Eip1193Provider | Array<string | Eip1193Provider>} provider - The url of the rpc provider, or an instance of a class that implements eip-1193. It's also possible to provide an array of urls or EIP 1193 providers instead. In such case, connection errors will cause the wallet to automatically fallback on the next provider in the list.
+ * @property {number} [retries] - If set and if 'provider' is a list of urls or EIP 1193 providers, the number of additional retry attempts after the initial call fails. Total attempts = `1 + retries`. For example, `retries: 3` with 4 providers will try each provider once before throwing. If `retries` exceeds the number of providers, the failover will loop back and retry already-failed providers in round-robin order. Default: 3.
  * @property {string} bundlerUrl - The url of the bundler service.
  * @property {string} entryPointAddress - The address of the entry point smart contract.
  * @property {string} safeModulesVersion - The safe modules version.
@@ -136,7 +136,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @protected
      * @type {Eip1193Provider | undefined}
      */
-    this._provider = this._creatFailoverProvider(this._config)
+    this._provider = this._createFailoverProvider(this._config)
   }
 
   /**
@@ -160,7 +160,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   *    * Wraps a string RPC URL or provider into an EIP-1193 compatible provider.
+   * Wraps a string RPC URL or provider into an EIP-1193 compatible provider.
    *
    * @private
    * @param {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
@@ -182,19 +182,22 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @private
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
-   * @returns {Eip1193Provider | undefined}
+   * @returns {Eip1193Provider | undefined} A wrapped Eip1193Provider instance, or undefined if the config is invalid.
    */
-  _creatFailoverProvider (config = this._config) {
+  _createFailoverProvider (config = this._config) {
     const { provider, retries = 3 } = config
 
     if (Array.isArray(provider)) {
-      return provider
-        .reduce(
-          (failover, candidate) =>
-            failover.addProvider(this._wrapEip1193Provider(candidate)),
-          new FailoverProvider({ retries })
-        )
-        .initialize()
+      if (provider.length > 0) {
+        return provider
+          .reduce(
+            (failover, entry) => {
+              return failover.addProvider(this._wrapEip1193Provider(entry))
+            },
+            new FailoverProvider({ retries })
+          )
+          .initialize()
+      }
     }
 
     if (provider) {
@@ -431,7 +434,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
     if (!this._safe4337Packs.has(cacheKey)) {
       const safe4337Pack = await Safe4337Pack.init({
-        provider: this._creatFailoverProvider(config),
+        provider: this._createFailoverProvider(config),
         bundlerUrl: config.bundlerUrl,
         safeModulesVersion: config.safeModulesVersion,
         options: {

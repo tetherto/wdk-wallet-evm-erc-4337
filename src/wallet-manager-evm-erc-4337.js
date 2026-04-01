@@ -63,7 +63,9 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
         const failoverProvider = new FailoverProvider({ retries })
 
         for (const entry of provider) {
-          const option = typeof entry === 'string' ? new JsonRpcProvider(entry) : new BrowserProvider(entry)
+          const option = typeof entry === 'string'
+            ? new JsonRpcProvider(entry)
+            : new BrowserProvider(entry)
           failoverProvider.addProvider(option)
         }
 

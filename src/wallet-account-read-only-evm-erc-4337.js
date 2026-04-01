@@ -211,14 +211,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
     if (Array.isArray(provider)) {
       if (provider.length > 0) {
-        return provider
-          .reduce(
-            (failover, entry) => {
-              return failover.addProvider(this._wrapEip1193Provider(entry))
-            },
-            new FailoverProvider({ retries })
-          )
-          .initialize()
+        const failoverProvider = new FailoverProvider({ retries })
+
+        for (const entry of provider) {
+          const option = this._wrapEip1193Provider(entry)
+          failoverProvider.addProvider(option)
+        }
+
+        return failoverProvider.initialize()
       }
     }
 

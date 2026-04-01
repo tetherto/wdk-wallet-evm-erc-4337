@@ -40,7 +40,7 @@ import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-
 
 /** @typedef {import('@tetherto/wdk-safe-relay-kit').Safe4337Pack} Safe4337Pack */
 
-const FEE_TOLERANCE_COEFFICIENT = 120n
+const QUOTE_MAX_AGE_MS = 2 * 60 * 1_000
 
 const USDT_MAINNET_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
 
@@ -169,9 +169,10 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     const { isSponsored, useNativeCoins } = mergedConfig
 
-    const { fee } = await this.quoteSendTransaction(tx, config)
+    const fee = this._getValidCachedFee(tx) ?? (await this.quoteSendTransaction(tx, config)).fee
+    this._lastQuote = undefined
 
-    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
+    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : fee
 
     const hash = await this._sendUserOperation([tx].flat(), {
       ...mergedConfig,
@@ -199,13 +200,14 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     const tx = await WalletAccountEvm._getTransferTransaction(options)
 
-    const { fee } = await this.quoteSendTransaction(tx, config)
+    const fee = this._getValidCachedFee(tx) ?? (await this.quoteSendTransaction(tx, config)).fee
+    this._lastQuote = undefined
 
     if (!isSponsored && transferMaxFee !== undefined && fee >= transferMaxFee) {
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
 
-    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : BigInt(fee * FEE_TOLERANCE_COEFFICIENT / 100n)
+    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : fee
 
     const hash = await this._sendUserOperation([tx], {
       ...mergedConfig,
@@ -253,6 +255,35 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     }
 
     return safe4337Pack
+  }
+
+  /**
+   * Returns the cached fee if it exists, is not expired, and matches the given transaction.
+   * Clears cache on match or expiry; preserves it on mismatch.
+   *
+   * @private
+   * @param {EvmTransaction | EvmTransaction[]} tx - The transaction to match against.
+   * @returns {bigint | undefined} The cached fee, or undefined if not available, expired, or mismatched.
+   */
+  _getValidCachedFee (tx) {
+    const quote = this._lastQuote
+
+    if (!quote) {
+      return undefined
+    }
+
+    if (Date.now() - quote.createdAt > QUOTE_MAX_AGE_MS) {
+      this._lastQuote = undefined
+      return undefined
+    }
+
+    if (WalletAccountReadOnlyEvmErc4337._getTxKey(tx) !== quote.txKey) {
+      return undefined
+    }
+
+    this._lastQuote = undefined
+
+    return quote.fee
   }
 
   /** @private */

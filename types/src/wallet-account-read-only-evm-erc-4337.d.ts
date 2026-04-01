@@ -29,6 +29,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     protected _feeEstimator: IFeeEstimator | undefined;
     /**
+     * Cached quote from the last fee estimation.
+     *
+     * @protected
+     * @type {CachedQuote | undefined}
+     */
+    protected _lastQuote: CachedQuote | undefined;
+    /**
      * The chain id.
      *
      * @protected
@@ -45,6 +52,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @returns {string} The Safe address.
      */
     static predictSafeAddress(owner: string, { chainId, safeModulesVersion }: Pick<EvmErc4337WalletConfig, "chainId" | "safeModulesVersion">): string;
+    /**
+     * Returns a serialized key for transaction cache matching.
+     *
+     * @protected
+     * @param {EvmTransaction | EvmTransaction[]} tx - The transaction(s) to serialize.
+     * @returns {string} The serialized transaction key.
+     */
+    protected static _getTxKey(tx: EvmTransaction | EvmTransaction[]): string;
     /**
      * Returns the account's eth balance.
      *
@@ -74,6 +89,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     /**
      * Quotes the costs of a send transaction operation.
      *
+     * The result is cached internally for up to 2 minutes. If `sendTransaction` is called with the
+     * same transaction within that window, the cached fee is reused without an additional RPC round-trip.
+     *
      * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
      * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
      * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
@@ -81,6 +99,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     quoteSendTransaction(tx: EvmTransaction | EvmTransaction[], config?: Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>): Promise<Omit<TransactionResult, "hash">>;
     /**
      * Quotes the costs of a transfer operation.
+     *
+     * The result is cached internally for up to 2 minutes. If `transfer` is called with the
+     * same transaction within that window, the cached fee is reused without an additional RPC round-trip.
      *
      * @param {TransferOptions} options - The transfer's options.
      * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
@@ -253,6 +274,20 @@ export type EvmErc4337WalletNativeCoinsConfig = {
      * - The maximum fee amount for transfer operations.
      */
     transferMaxFee?: number | bigint;
+};
+export type CachedQuote = {
+    /**
+     * - The estimated fee with tolerance buffer applied.
+     */
+    fee: bigint;
+    /**
+     * - The timestamp when the quote was created.
+     */
+    createdAt: number;
+    /**
+     * - A serialized key of the transaction used for cache matching.
+     */
+    txKey: string;
 };
 export type EvmErc4337WalletConfig = EvmErc4337WalletCommonConfig & (EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig);
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';

@@ -444,4 +444,128 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     await expect(account.transfer(TRANSFER))
       .rejects.toThrow('Exceeded maximum fee cost for transfer operation.')
   }, TIMEOUT)
+
+  test('should use cached fee when sendTransaction is called with the same quoted params', async () => {
+    const account0 = await wallet.getAccountByPath("0'/0/0")
+    account0._lastQuote = undefined
+    const quoteSpy = jest.spyOn(account0, 'quoteSendTransaction')
+
+    const TX = {
+      to: ACCOUNT1.safeAddress,
+      value: 0
+    }
+
+    const { fee: quotedFee } = await account0.quoteSendTransaction(TX)
+    expect(quotedFee).toBeGreaterThan(0n)
+    expect(quoteSpy).toHaveBeenCalledTimes(1)
+
+    const { hash, fee: sendFee } = await account0.sendTransaction(TX)
+    await waitForTx(hash, account0)
+    expect(sendFee).toBe(quotedFee)
+    expect(quoteSpy).toHaveBeenCalledTimes(1)
+
+    quoteSpy.mockRestore()
+  }, TIMEOUT)
+
+  test('should not use cached fee when sendTransaction params differ from quoted params', async () => {
+    const account0 = await wallet.getAccountByPath("0'/0/0")
+    const quoteSpy = jest.spyOn(account0, 'quoteSendTransaction')
+
+    const TX_A = {
+      to: ACCOUNT1.safeAddress,
+      value: 0
+    }
+
+    const TX_B = {
+      to: ACCOUNT0.safeAddress,
+      value: 0
+    }
+
+    await account0.quoteSendTransaction(TX_A)
+    expect(quoteSpy).toHaveBeenCalledTimes(1)
+
+    const { hash: hashB } = await account0.sendTransaction(TX_B)
+    await waitForTx(hashB, account0)
+    expect(quoteSpy).toHaveBeenCalledTimes(2)
+    expect(account0._lastQuote).toBeUndefined()
+
+    quoteSpy.mockRestore()
+  }, TIMEOUT)
+
+  test('should re-quote when cached fee has expired', async () => {
+    const account0 = await wallet.getAccountByPath("0'/0/0")
+    const quoteSpy = jest.spyOn(account0, 'quoteSendTransaction')
+
+    const TX = {
+      to: ACCOUNT1.safeAddress,
+      value: 0
+    }
+
+    const { fee } = await account0.quoteSendTransaction(TX)
+    expect(fee).toBeGreaterThan(0n)
+    expect(quoteSpy).toHaveBeenCalledTimes(1)
+
+    account0._lastQuote.createdAt = Date.now() - 3 * 60 * 1_000
+
+    const { hash } = await account0.sendTransaction(TX)
+    await waitForTx(hash, account0)
+    expect(quoteSpy).toHaveBeenCalledTimes(2)
+
+    quoteSpy.mockRestore()
+  }, TIMEOUT)
+
+  test('should return 0n fee for sponsored transactions and not cache the result', async () => {
+    const account0 = await wallet.getAccountByPath("0'/0/0")
+    account0._lastQuote = undefined
+    const quoteSpy = jest.spyOn(account0, 'quoteSendTransaction')
+
+    const TX = {
+      to: ACCOUNT1.safeAddress,
+      value: 0
+    }
+
+    const sponsoredConfig = {
+      isSponsored: true,
+      paymasterUrl: 'http://localhost:3000?pimlico'
+    }
+
+    const { fee } = await account0.quoteSendTransaction(TX, sponsoredConfig)
+    expect(fee).toBe(0n)
+    expect(quoteSpy).toHaveBeenCalledTimes(1)
+
+    quoteSpy.mockRestore()
+  }, TIMEOUT)
+
+  test('should not consume cached transfer fee when approve is called in between', async () => {
+    const account0 = await wallet.getAccountByPath("0'/0/0")
+    account0._lastQuote = undefined
+    const quoteSpy = jest.spyOn(account0, 'quoteSendTransaction')
+
+    const TRANSFER = {
+      token: testToken.target,
+      recipient: ACCOUNT1.safeAddress,
+      amount: 1n
+    }
+
+    const { fee: quotedFee } = await account0.quoteTransfer(TRANSFER)
+    expect(quoteSpy).toHaveBeenCalledTimes(1)
+
+    const APPROVE_TRANSACTION = {
+      to: testToken.target,
+      value: 0,
+      data: testToken.interface.encodeFunctionData('approve', [ACCOUNT1.safeAddress, 100n])
+    }
+
+    const { hash: approveHash } = await account0.sendTransaction(APPROVE_TRANSACTION)
+    await waitForTx(approveHash, account0)
+    expect(quoteSpy).toHaveBeenCalledTimes(2)
+
+    const { hash, fee: transferFee } = await account0.transfer(TRANSFER)
+    await waitForTx(hash, account0)
+    expect(quoteSpy).toHaveBeenCalledTimes(3)
+
+    expect(transferFee).toBe(quotedFee)
+
+    quoteSpy.mockRestore()
+  }, TIMEOUT)
 })

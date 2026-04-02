@@ -15,6 +15,18 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     protected _config: Omit<EvmErc4337WalletConfig, "transferMaxFee">;
     /**
+     * An EIP-1193–compatible provider used to interact with the blockchain.
+     *
+     * Note: the provider type is restricted to EIP-1193 to ensure compatibility
+     * with Safe4337Pack and to enable the failover mechanism. While RPC URLs
+     * can still be provided in the configuration, they are internally wrapped
+     * into an EIP-1193 provider.
+     *
+     * @protected
+     * @type {Eip1193Provider}
+     */
+    protected _provider: Eip1193Provider;
+    /**
      * Map of Safe4337Pack instances cached by configuration.
      *
      * @protected

@@ -156,7 +156,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * into an EIP-1193 provider.
      *
      * @protected
-     * @type {Eip1193Provider | undefined}
+     * @type {Eip1193Provider}
      */
     this._provider = this._createFailoverProvider(this._config)
   }
@@ -204,29 +204,25 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @private
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
-   * @returns {Eip1193Provider | undefined} A wrapped Eip1193Provider instance, or undefined if the config is invalid.
+   * @returns {Eip1193Provider} A wrapped Eip1193Provider instance.
    */
   _createFailoverProvider (config = this._config) {
     const { provider, retries = 3 } = config
 
     if (Array.isArray(provider)) {
-      if (provider.length > 0) {
-        const failoverProvider = new FailoverProvider({ retries })
+      if (!provider.length) throw new Error("The 'provider' option cannot be set to an empty list.")
 
-        for (const entry of provider) {
-          const option = this._wrapEip1193Provider(entry)
-          failoverProvider.addProvider(option)
-        }
+      const failoverProvider = new FailoverProvider({ retries })
 
-        return failoverProvider.initialize()
+      for (const entry of provider) {
+        const option = this._wrapEip1193Provider(entry)
+        failoverProvider.addProvider(option)
       }
-    }
 
-    if (provider) {
+      return failoverProvider.initialize()
+    } else {
       return this._wrapEip1193Provider(provider)
     }
-
-    return undefined
   }
 
   /**
@@ -465,8 +461,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     }
 
     if (!this._safe4337Packs.has(cacheKey)) {
+      const provider = config === this._config
+        ? this._provider
+        : this._createFailoverProvider(config)
+
       const safe4337Pack = await Safe4337Pack.init({
-        provider: this._createFailoverProvider(config),
+        provider,
         bundlerUrl: config.bundlerUrl,
         safeModulesVersion: config.safeModulesVersion,
         options: {

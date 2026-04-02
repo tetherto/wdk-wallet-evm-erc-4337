@@ -32,6 +32,14 @@ import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
 
 export default class WalletManagerEvmErc4337 extends WalletManager {
   /**
+   * An ethers provider to interact with a node of the blockchain.
+   *
+   * @protected
+   * @type {Provider}
+   */
+  _provider
+
+  /**
    * Creates a new wallet manager for evm blockchains that implements the [erc-4337](https://www.erc4337.io/docs) standard and its account abstraction features.
    *
    * @param {string | Uint8Array} seed - The wallet's [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
@@ -48,30 +56,22 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
      */
     this._config = config
 
-    /**
-     * An ethers provider to interact with a node of the blockchain.
-     *
-     * @protected
-     * @type {Provider | undefined}
-     */
-    this._provider = undefined
-
     const { provider, retries = 3 } = config
 
     if (Array.isArray(provider)) {
-      if (provider.length > 0) {
-        const failoverProvider = new FailoverProvider({ retries })
+      if (!provider.length) throw new Error("The 'provider' option cannot be set to an empty list.")
 
-        for (const entry of provider) {
-          const option = typeof entry === 'string'
-            ? new JsonRpcProvider(entry)
-            : new BrowserProvider(entry)
-          failoverProvider.addProvider(option)
-        }
+      const failoverProvider = new FailoverProvider({ retries })
 
-        this._provider = failoverProvider.initialize()
+      for (const entry of provider) {
+        const option = typeof entry === 'string'
+          ? new JsonRpcProvider(entry)
+          : new BrowserProvider(entry)
+        failoverProvider.addProvider(option)
       }
-    } else if (provider) {
+
+      this._provider = failoverProvider.initialize()
+    } else {
       this._provider =
         typeof provider === 'string'
           ? new JsonRpcProvider(provider)

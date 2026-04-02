@@ -17,9 +17,9 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
      * An ethers provider to interact with a node of the blockchain.
      *
      * @protected
-     * @type {Provider | undefined}
+     * @type {Provider}
      */
-    protected _provider: Provider | undefined;
+    protected _provider: Provider;
     /**
      * Returns the wallet account at a specific index (see [BIP-44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)).
      *

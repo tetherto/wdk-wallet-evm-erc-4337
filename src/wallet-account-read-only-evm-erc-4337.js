@@ -182,50 +182,6 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Wraps a string RPC URL or provider into an EIP-1193 compatible provider.
-   *
-   * @private
-   * @param {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
-   * @returns { Eip1193Provider } A wrapped Eip1193Provider instance.
-   */
-  _wrapEip1193Provider (provider) {
-    return typeof provider === 'string'
-      ? {
-          provider: new JsonRpcProvider(provider),
-          request ({ method, params }) {
-            return this.provider.send(method, params ?? [])
-          }
-        }
-      : provider
-  }
-
-  /**
-   * Creates a FailoverProvider from the configured providers. If only one provider is supplied, it is wrapped and returned.
-   *
-   * @private
-   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
-   * @returns {Eip1193Provider} A wrapped Eip1193Provider instance.
-   */
-  _createFailoverProvider (config = this._config) {
-    const { provider, retries = 3 } = config
-
-    if (Array.isArray(provider)) {
-      if (!provider.length) throw new Error("The 'provider' option cannot be set to an empty list.")
-
-      const failoverProvider = new FailoverProvider({ retries })
-
-      for (const entry of provider) {
-        const option = this._wrapEip1193Provider(entry)
-        failoverProvider.addProvider(option)
-      }
-
-      return failoverProvider.initialize()
-    } else {
-      return this._wrapEip1193Provider(provider)
-    }
-  }
-
-  /**
    * Returns the account's eth balance.
    *
    * @returns {Promise<bigint>} The eth balance (in weis).
@@ -509,6 +465,52 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     }
 
     return this._chainId
+  }
+
+  /**
+   * Wraps a string RPC URL or provider into an EIP-1193 compatible provider.
+   *
+   * @private
+   * @param {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
+   * @returns { Eip1193Provider } A wrapped Eip1193Provider instance.
+   */
+  _wrapEip1193Provider (provider) {
+    return typeof provider === 'string'
+      ? {
+          provider: new JsonRpcProvider(provider),
+          request ({ method, params }) {
+            return this.provider.send(method, params ?? [])
+          }
+        }
+      : provider
+  }
+
+  /**
+   * Creates a FailoverProvider from the configured providers. If only one provider is supplied, it is wrapped and returned.
+   *
+   * @private
+   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
+   * @returns {Eip1193Provider} A wrapped Eip1193Provider instance.
+   */
+  _createFailoverProvider (config = this._config) {
+    const { provider, retries = 3 } = config
+
+    if (Array.isArray(provider)) {
+      if (!provider.length) {
+        throw new Error("The 'provider' option cannot be set to an empty list.")
+      }
+
+      const failoverProvider = new FailoverProvider({ retries })
+
+      for (const entry of provider) {
+        const option = this._wrapEip1193Provider(entry)
+        failoverProvider.addProvider(option)
+      }
+
+      return failoverProvider.initialize()
+    }
+
+    return this._wrapEip1193Provider(provider)
   }
 
   /** @private */

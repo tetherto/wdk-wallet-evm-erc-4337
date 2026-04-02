@@ -59,7 +59,9 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
     const { provider, retries = 3 } = config
 
     if (Array.isArray(provider)) {
-      if (!provider.length) throw new Error("The 'provider' option cannot be set to an empty list.")
+      if (!provider.length) {
+        throw new Error("The 'provider' option cannot be set to an empty list.")
+      }
 
       const failoverProvider = new FailoverProvider({ retries })
 

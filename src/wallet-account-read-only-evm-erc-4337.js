@@ -156,7 +156,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * into an EIP-1193 provider.
      *
      * @protected
-     * @type {Eip1193Provider}
+     * @type {Eip1193Provider | undefined}
      */
     this._provider = this._createFailoverProvider(this._config)
   }
@@ -489,28 +489,30 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Creates a FailoverProvider from the configured providers. If only one provider is supplied, it is wrapped and returned.
    *
    * @private
-   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
-   * @returns {Eip1193Provider} A wrapped Eip1193Provider instance.
+   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The configuration object.
+   * @returns {Eip1193Provider | undefined} A wrapped Eip1193Provider instance, or undefined if the config is invalid.
    */
   _createFailoverProvider (config = this._config) {
     const { provider, retries = 3 } = config
 
     if (Array.isArray(provider)) {
-      if (!provider.length) {
-        throw new Error("The 'provider' option cannot be set to an empty list.")
+      if (provider.length > 0) {
+        const failoverProvider = new FailoverProvider({ retries })
+
+        for (const entry of provider) {
+          const option = this._wrapEip1193Provider(entry)
+          failoverProvider.addProvider(option)
+        }
+
+        return failoverProvider.initialize()
       }
-
-      const failoverProvider = new FailoverProvider({ retries })
-
-      for (const entry of provider) {
-        const option = this._wrapEip1193Provider(entry)
-        failoverProvider.addProvider(option)
-      }
-
-      return failoverProvider.initialize()
     }
 
-    return this._wrapEip1193Provider(provider)
+    if (provider) {
+      return this._wrapEip1193Provider(provider)
+    }
+
+    return undefined
   }
 
   /** @private */

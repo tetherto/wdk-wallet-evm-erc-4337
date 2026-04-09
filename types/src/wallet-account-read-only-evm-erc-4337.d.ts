@@ -23,9 +23,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * into an EIP-1193 provider.
      *
      * @protected
-     * @type {Eip1193Provider | undefined}
+     * @type {Eip1193Provider}
      */
-    protected _provider: Eip1193Provider | undefined;
+    protected _provider: Eip1193Provider;
     /**
      * Map of Safe4337Pack instances cached by configuration.
      *
@@ -196,9 +196,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @private
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The configuration object.
-     * @returns {Eip1193Provider | undefined} A wrapped Eip1193Provider instance, or undefined if the config is invalid.
+     * @returns {Eip1193Provider} A wrapped Eip1193Provider instance.
+     * @throws {Error} If the `provider` option is set to an empty array.
      */
-    private _createFailoverProvider (config?: Omit<EvmErc4337WalletConfig, "transferMaxFee">): Eip1193Provider | undefined
+    private _createFailoverProvider (config?: Omit<EvmErc4337WalletConfig, "transferMaxFee">): Eip1193Provider
     /** @private */
     private _getEvmReadOnlyAccount;
     /** @private */

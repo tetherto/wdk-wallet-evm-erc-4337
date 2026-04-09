@@ -156,7 +156,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * into an EIP-1193 provider.
      *
      * @protected
-     * @type {Eip1193Provider | undefined}
+     * @type {Eip1193Provider}
      */
     this._provider = this._createFailoverProvider(this._config)
   }
@@ -417,7 +417,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     }
 
     if (!this._safe4337Packs.has(cacheKey)) {
-      const provider = config === this._config
+      const provider = config.provider === this._config.provider
         ? this._provider
         : this._createFailoverProvider(config)
 
@@ -490,29 +490,28 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @private
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The configuration object.
-   * @returns {Eip1193Provider | undefined} A wrapped Eip1193Provider instance, or undefined if the config is invalid.
+   * @returns {Eip1193Provider} A wrapped Eip1193Provider instance.
+   * @throws {Error} If the `provider` option is set to an empty array.
    */
   _createFailoverProvider (config = this._config) {
     const { provider, retries = 3 } = config
 
     if (Array.isArray(provider)) {
-      if (provider.length > 0) {
-        const failoverProvider = new FailoverProvider({ retries })
-
-        for (const entry of provider) {
-          const option = this._wrapEip1193Provider(entry)
-          failoverProvider.addProvider(option)
-        }
-
-        return failoverProvider.initialize()
+      if (!provider.length) {
+        throw new Error("The 'provider' option cannot be set to an empty list.")
       }
+
+      const failoverProvider = new FailoverProvider({ retries })
+
+      for (const entry of provider) {
+        const option = this._wrapEip1193Provider(entry)
+        failoverProvider.addProvider(option)
+      }
+
+      return failoverProvider.initialize()
     }
 
-    if (provider) {
-      return this._wrapEip1193Provider(provider)
-    }
-
-    return undefined
+    return this._wrapEip1193Provider(provider)
   }
 
   /** @private */

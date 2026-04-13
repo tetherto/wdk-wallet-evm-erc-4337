@@ -420,11 +420,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
   /** @private */
   async _getEvmReadOnlyAccount () {
-    const address = await this.getAddress()
+    if (!this._evmReadOnlyAccount) {
+      const address = await this.getAddress()
+      this._evmReadOnlyAccount = new WalletAccountReadOnlyEvm(address, this._config)
+    }
 
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(address, this._config)
-
-    return evmReadOnlyAccount
+    return this._evmReadOnlyAccount
   }
 
   /** @private */

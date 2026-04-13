@@ -18,7 +18,20 @@ import { Contract } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
-import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-4337.js'
+import { toAccount } from 'viem/accounts'
+import { secp256k1 } from '@noble/curves/secp256k1'
+import {
+  encodeFunctionData,
+  hashMessage,
+  hashTypedData,
+  hexToBytes,
+  numberToHex,
+  keccak256,
+  serializeTransaction,
+  serializeSignature
+} from 'viem'
+
+import WalletAccountReadOnlyEvmErc4337, { _needsGasBuffer } from './wallet-account-read-only-evm-erc-4337.js'
 
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
@@ -37,8 +50,6 @@ import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletSponsorshipPolicyConfig} EvmErc4337WalletSponsorshipPolicyConfig */
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').TypedData} TypedData */
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletNativeCoinsConfig} EvmErc4337WalletNativeCoinsConfig */
-
-/** @typedef {import('@tetherto/wdk-safe-relay-kit').Safe4337Pack} Safe4337Pack */
 
 const QUOTE_MAX_AGE_MS = 2 * 60 * 1_000
 
@@ -235,26 +246,56 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    */
   dispose () {
     this._ownerAccount.dispose()
+    this._smartAccountClients.clear()
+    this._disposed = true
   }
 
   /**
-   * Returns the safe's erc-4337 pack of the account.
-   * Extends parent implementation by adding signer for transaction signing.
+   * @protected
+   */
+  async _getSmartAccountClient (config = this._config) {
+    if (this._disposed) {
+      throw new Error('Private key has been disposed.')
+    }
+    return super._getSmartAccountClient(config)
+  }
+
+  /**
+   * Returns a viem LocalAccount using the owner's private key bytes for signing.
+   * The private key is never converted to a string — it stays as a Uint8Array
+   * throughout, and is passed directly to @noble/curves for secp256k1 signing.
    *
    * @protected
-   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The configuration object. Defaults to this._config if not provided.
-   * @returns {Promise<Safe4337Pack>} The safe's erc-4337 pack.
+   * @returns {import('viem/accounts').LocalAccount} The viem local account.
    */
-  async _getSafe4337Pack (config = this._config) {
-    const safe4337Pack = await super._getSafe4337Pack(config)
+  _getViemOwnerAccount () {
+    // Reference the keyPair so the closure reads it at sign-time (after dispose, it's undefined)
+    const keyPair = this._ownerAccount.keyPair
+    const ownerAddress = this._ownerAccountAddress
 
-    const safeProvider = safe4337Pack.protocolKit.getSafeProvider()
+    return toAccount({
+      address: ownerAddress,
 
-    if (!safeProvider.signer) {
-      safeProvider.signer = this._ownerAccount._account
-    }
+      async sign ({ hash }) {
+        return _signHashWithBytes(hash, keyPair.privateKey)
+      },
 
-    return safe4337Pack
+      async signMessage ({ message }) {
+        return _signHashWithBytes(hashMessage(message), keyPair.privateKey)
+      },
+
+      async signTransaction (transaction, { serializer = serializeTransaction } = {}) {
+        const sig = _signToObject(
+          keccak256(serializer(transaction)),
+          keyPair.privateKey
+        )
+        return serializer(transaction, sig)
+      },
+
+      async signTypedData (typedData) {
+        return _signHashWithBytes(hashTypedData(typedData), keyPair.privateKey)
+      }
+    })
   }
 
   /**
@@ -290,40 +331,113 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   async _sendUserOperation (txs, { amountToApprove, ...config }) {
     const { useNativeCoins, paymasterToken, isSponsored, sponsorshipPolicyId } = config
 
-    const safe4337Pack = await this._getSafe4337Pack(config)
+    const smartAccountClient = await this._getSmartAccountClient(config)
 
-    const address = await this.getAddress()
+    const paymasterTokenAddress = (isSponsored || useNativeCoins) ? undefined : paymasterToken?.address
 
-    const twoMinutesFromNow = Math.floor(Date.now() / 1_000) + 2 * 60
+    const calls = txs.map(tx => ({
+      to: tx.to,
+      value: tx.value !== undefined ? BigInt(tx.value) : 0n,
+      data: tx.data || '0x'
+    }))
 
-    const options = {
-      amountToApprove,
-      paymasterTokenAddress: (isSponsored || useNativeCoins) ? undefined : paymasterToken?.address,
-      isSponsored,
-      sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined
+    if (paymasterTokenAddress && amountToApprove && amountToApprove > 0n) {
+      const approveAbi = [{ name: 'approve', type: 'function', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }]
+      // Reset allowance to 0 first (required by USDT on mainnet), then set new amount
+      calls.unshift(
+        {
+          to: paymasterTokenAddress,
+          value: 0n,
+          data: encodeFunctionData({ abi: approveAbi, functionName: 'approve', args: [config.paymasterAddress, 0n] })
+        },
+        {
+          to: paymasterTokenAddress,
+          value: 0n,
+          data: encodeFunctionData({ abi: approveAbi, functionName: 'approve', args: [config.paymasterAddress, amountToApprove] })
+        }
+      )
     }
 
+    const needsGasBuffer = _needsGasBuffer(config.bundlerUrl)
+
+    const paymasterContext = paymasterTokenAddress
+      ? { token: paymasterTokenAddress }
+      : isSponsored && sponsorshipPolicyId
+        ? { sponsorshipPolicyId }
+        : undefined
+
     try {
-      const safeOperation = await safe4337Pack.createTransaction({
-        transactions: txs.map(tx => ({ from: address, ...tx })),
-        options: {
-          validUntil: twoMinutesFromNow,
-          feeEstimator: await this._getFeeEstimator(),
-          ...options
-        }
-      })
+      let hash
 
-      const signedSafeOperation = await safe4337Pack.signSafeOperation(safeOperation)
+      if (!needsGasBuffer) {
+        hash = await smartAccountClient.sendUserOperation({ calls, paymasterContext })
+      } else {
+        // Double-prepare pipeline: estimate → bump gas → re-prepare → sign → send
+        const { _prepareWithGasBuffer } = await import('./wallet-account-read-only-evm-erc-4337.js')
+        const { formatUserOperationRequest } = await import('viem/account-abstraction')
 
-      return await safe4337Pack.executeTransaction({
-        executable: signedSafeOperation
-      })
+        const prepared = await _prepareWithGasBuffer(smartAccountClient, { calls, paymasterContext })
+        const signature = await smartAccountClient.account.signUserOperation(prepared)
+
+        const rpcParams = formatUserOperationRequest({ ...prepared, signature })
+
+        hash = await smartAccountClient.request({
+          method: 'eth_sendUserOperation',
+          params: [rpcParams, smartAccountClient.account.entryPoint.address]
+        })
+      }
+
+      return hash
     } catch (err) {
-      if (err.message.includes('AA50')) {
+      if (err.message?.includes('AA50')) {
         throw new Error('Not enough funds on the safe account to repay the paymaster.')
       }
 
       throw err
     }
+  }
+}
+
+/**
+ * Signs a hash using a Uint8Array private key via @noble/curves secp256k1.
+ * The private key never touches a string representation.
+ *
+ * @param {string} hash - The hash to sign (hex string with 0x prefix).
+ * @param {Uint8Array} privateKeyBytes - The 32-byte private key.
+ * @returns {string} The serialized signature as a hex string.
+ */
+function _signHashWithBytes (hash, privateKeyBytes) {
+  if (!privateKeyBytes) {
+    throw new Error('Private key has been disposed.')
+  }
+
+  const sig = _signToObject(hash, privateKeyBytes)
+
+  return serializeSignature({ ...sig, to: 'hex' })
+}
+
+/**
+ * Signs a hash and returns a signature object (r, s, v, yParity).
+ *
+ * @param {string} hash - The hash to sign (hex string with 0x prefix).
+ * @param {Uint8Array} privateKeyBytes - The 32-byte private key.
+ * @returns {{ r: string, s: string, v: bigint, yParity: number }} The signature object.
+ */
+function _signToObject (hash, privateKeyBytes) {
+  if (!privateKeyBytes) {
+    throw new Error('Private key has been disposed.')
+  }
+
+  const hashBytes = hexToBytes(hash)
+  const { r, s, recovery } = secp256k1.sign(hashBytes, privateKeyBytes, {
+    lowS: true,
+    extraEntropy: false
+  })
+
+  return {
+    r: numberToHex(r, { size: 32 }),
+    s: numberToHex(s, { size: 32 }),
+    v: recovery ? 28n : 27n,
+    yParity: recovery
   }
 }

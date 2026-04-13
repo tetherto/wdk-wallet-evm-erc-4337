@@ -29,11 +29,12 @@
     "test:integration:coverage": "concurrently -k -s first -n \"NODE,TEST\" -c \"black,green\" --hide NODE \"npx hardhat node\" \"npm run test:integration-wait:coverage\""
   },
   "dependencies": {
-    "@tetherto/wdk-safe-relay-kit": "4.1.5",
     "@tetherto/wdk-wallet": "1.0.0-beta.7",
     "@tetherto/wdk-wallet-evm": "1.0.0-beta.10",
     "bare-node-runtime": "^1.1.4",
-    "ethers": "6.14.4"
+    "ethers": "6.14.4",
+    "permissionless": "0.3.5",
+    "viem": "^2.47.5"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "3.1.0",

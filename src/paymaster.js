@@ -8,7 +8,7 @@
 
 'use strict'
 
-import { Bundler, CandidePaymaster } from 'abstractionkit'
+import { CandidePaymaster } from 'abstractionkit'
 import { Interface } from 'ethers'
 
 export const PaymasterProvider = Object.freeze({
@@ -24,9 +24,12 @@ export const PaymasterMode = Object.freeze({
 
 const APPROVE_IFACE = new Interface(['function approve(address spender, uint256 amount)'])
 
-// Dummy EOA signature used for bundler simulation when the userOp hasn't been
-// signed yet. Sourced from AbstractionKit's EOADummySignerSignaturePair.
-const DUMMY_EOA_SIGNATURE = '0x47003599ffa7e9198f321afa774e34a12a959844efd6363b88896e9c24ed33cf4e1be876ef123a3c4467e7d451511434039539699f2baa2f44955fa3d1c1c6d81c'
+// Dummy Safe 4337 signature for bundler simulation before we sign the userOp.
+// Matches what SafeAccount030.formatSignaturesToUseroperationSignature([
+//   EOADummySignerSignaturePair], {}) produces: a 12-byte timestamp prefix
+// (validAfter=0, validUntil=0) followed by a 65-byte ECDSA dummy signature.
+export const DUMMY_SAFE_4337_SIGNATURE =
+  '0x00000000000000000000000047003599ffa7e9198f321afa774e34a12a959844efd6363b88896e9c24ed33cf4e1be876ef123a3c4467e7d451511434039539699f2baa2f44955fa3d1c1c6d81c'
 
 export function resolvePaymasterMode (config) {
   if (config.useNativeCoins) return PaymasterMode.NATIVE
@@ -79,22 +82,33 @@ export async function applyPaymasterToUserOp ({ provider, mode, smartAccount, us
 
   if (provider === PaymasterProvider.CANDIDE) {
     const paymaster = new CandidePaymaster(config.paymasterUrl)
+    // Pass the buffer as percentage multipliers so Candide re-signs over the
+    // bumped gas limits. Bumping after the paymaster signs invalidates its
+    // signature.
+    const candideOverrides = gasBufferPercent
+      ? {
+          callGasLimitPercentageMultiplier: gasBufferPercent,
+          verificationGasLimitPercentageMultiplier: gasBufferPercent
+        }
+      : undefined
+
     if (mode === PaymasterMode.SPONSORED) {
       const [sponsored] = await paymaster.createSponsorPaymasterUserOperation(
         smartAccount,
         userOp,
         config.bundlerUrl,
-        config.sponsorshipPolicyId
+        config.sponsorshipPolicyId,
+        candideOverrides
       )
-      return _applyGasBuffer(sponsored, gasBufferPercent)
+      return sponsored
     }
-    const withToken = await paymaster.createTokenPaymasterUserOperation(
+    return await paymaster.createTokenPaymasterUserOperation(
       smartAccount,
       userOp,
       config.paymasterToken.address,
-      config.bundlerUrl
+      config.bundlerUrl,
+      candideOverrides
     )
-    return _applyGasBuffer(withToken, gasBufferPercent)
   }
 
   return await _applyPimlicoPaymasterFull({ mode, smartAccount, userOp, config, chainId, gasBufferPercent })
@@ -106,9 +120,9 @@ async function _applyPimlicoPaymasterFull ({ mode, smartAccount, userOp, config,
     ? { token: config.paymasterToken.address }
     : (config.sponsorshipPolicyId ? { sponsorshipPolicyId: config.sponsorshipPolicyId } : {})
 
-  // Use a dummy EOA signature so bundler simulation of paymaster-enabled gas
-  // estimation passes the Safe 4337 module's signature-format check.
-  const signedForSim = { ...userOp, signature: DUMMY_EOA_SIGNATURE }
+  // Use a dummy Safe 4337 signature so bundler simulation of paymaster-enabled
+  // gas estimation passes the Safe 4337 module's signature-format check.
+  const signedForSim = { ...userOp, signature: DUMMY_SAFE_4337_SIGNATURE }
 
   const stub = await _jsonRpc(config.paymasterUrl, 'pm_getPaymasterStubData', [
     _encodeUserOpForRpc(signedForSim),
@@ -119,23 +133,34 @@ async function _applyPimlicoPaymasterFull ({ mode, smartAccount, userOp, config,
   const withStub = _mergePaymasterFields(signedForSim, stub)
 
   // Estimate gas through the bundler with the stub paymaster applied.
+  // Call eth_estimateUserOperationGas directly (not via AK's Bundler class)
+  // because v0.7 returns paymasterVerificationGasLimit + paymasterPostOpGasLimit
+  // and AK's wrapper discards them.
   // Don't zero maxFeePerGas / maxPriorityFeePerGas — Pimlico's singleton
   // paymaster computes token charges from them in postOp and reverts with
   // "divide by zero" when they are 0.
-  const bundler = new Bundler(config.bundlerUrl)
   const forEstimate = {
     ...withStub,
     callGasLimit: 0n,
     verificationGasLimit: 0n,
     preVerificationGas: 0n
   }
-  const estimation = await bundler.estimateUserOperationGas(forEstimate, config.entryPointAddress)
+  const estimation = await _jsonRpc(config.bundlerUrl, 'eth_estimateUserOperationGas', [
+    _encodeUserOpForRpc(forEstimate),
+    config.entryPointAddress
+  ])
   const bumpPct = 100n + BigInt(gasBufferPercent || 0)
   const withGas = {
     ...withStub,
     preVerificationGas: BigInt(estimation.preVerificationGas) * bumpPct / 100n,
     verificationGasLimit: BigInt(estimation.verificationGasLimit) * bumpPct / 100n,
-    callGasLimit: BigInt(estimation.callGasLimit) * bumpPct / 100n
+    callGasLimit: BigInt(estimation.callGasLimit) * bumpPct / 100n,
+    paymasterVerificationGasLimit: estimation.paymasterVerificationGasLimit != null
+      ? BigInt(estimation.paymasterVerificationGasLimit)
+      : withStub.paymasterVerificationGasLimit,
+    paymasterPostOpGasLimit: estimation.paymasterPostOpGasLimit != null
+      ? BigInt(estimation.paymasterPostOpGasLimit)
+      : withStub.paymasterPostOpGasLimit
   }
 
   if (stub?.isFinal === true) return withGas
@@ -147,16 +172,6 @@ async function _applyPimlicoPaymasterFull ({ mode, smartAccount, userOp, config,
     context
   ])
   return _mergePaymasterFields(withGas, final)
-}
-
-function _applyGasBuffer (userOp, bufferPct) {
-  if (!bufferPct) return userOp
-  const bumpPct = 100n + BigInt(bufferPct)
-  return {
-    ...userOp,
-    callGasLimit: (userOp.callGasLimit || 0n) * bumpPct / 100n,
-    verificationGasLimit: (userOp.verificationGasLimit || 0n) * bumpPct / 100n
-  }
 }
 
 function _mergePaymasterFields (userOp, fields) {

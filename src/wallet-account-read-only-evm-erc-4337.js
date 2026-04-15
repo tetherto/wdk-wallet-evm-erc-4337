@@ -26,6 +26,7 @@ import {
 } from 'abstractionkit'
 
 import {
+  DUMMY_SAFE_4337_SIGNATURE,
   PaymasterMode,
   PaymasterProvider,
   applyPaymasterToUserOp,
@@ -131,7 +132,9 @@ const SAFE_MODULES_MAP = {
 /** Bundlers known to underestimate gas and require a buffer. */
 const BUNDLERS_NEEDING_GAS_BUFFER = ['candide']
 
-const GAS_ESTIMATION_BUFFER = 150
+// Percentage to add on top of bundler estimates for bundlers known to
+// underestimate. AbstractionKit convention: `50` → estimate * 1.5.
+const GAS_ESTIMATION_BUFFER = 50
 
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
   /**
@@ -588,6 +591,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       undefined,
       { callGasLimit: 0n, verificationGasLimit: 0n, preVerificationGas: 0n }
     )
+
+    // AK's createUserOperation only sets a dummy signature when it runs its
+    // internal estimation (which we skipped). The paymaster adapters later
+    // need a parseable Safe 4337 signature for bundler simulation; fill one in.
+    if (!baseUserOp.signature || baseUserOp.signature.length < 3) {
+      baseUserOp.signature = DUMMY_SAFE_4337_SIGNATURE
+    }
 
     const userOp = await applyPaymasterToUserOp({
       provider,

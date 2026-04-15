@@ -18,20 +18,17 @@ import { Contract } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
-import { toAccount } from 'viem/accounts'
-import { secp256k1 } from '@noble/curves/secp256k1'
-import {
-  encodeFunctionData,
-  hashMessage,
-  hashTypedData,
-  hexToBytes,
-  numberToHex,
-  keccak256,
-  serializeTransaction,
-  serializeSignature
-} from 'viem'
+import { Bundler } from 'abstractionkit'
 
-import WalletAccountReadOnlyEvmErc4337, { _needsGasBuffer } from './wallet-account-read-only-evm-erc-4337.js'
+import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-4337.js'
+import {
+  PaymasterMode,
+  PaymasterProvider,
+  buildApproveCalls,
+  resolvePaymasterMode,
+  resolvePaymasterProvider
+} from './paymaster.js'
+import { signUserOperationWithKeyBytes } from './signer.js'
 
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
@@ -246,56 +243,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    */
   dispose () {
     this._ownerAccount.dispose()
-    this._smartAccountClients.clear()
     this._disposed = true
-  }
-
-  /**
-   * @protected
-   */
-  async _getSmartAccountClient (config = this._config) {
-    if (this._disposed) {
-      throw new Error('Private key has been disposed.')
-    }
-    return super._getSmartAccountClient(config)
-  }
-
-  /**
-   * Returns a viem LocalAccount using the owner's private key bytes for signing.
-   * The private key is never converted to a string — it stays as a Uint8Array
-   * throughout, and is passed directly to @noble/curves for secp256k1 signing.
-   *
-   * @protected
-   * @returns {import('viem/accounts').LocalAccount} The viem local account.
-   */
-  _getViemOwnerAccount () {
-    // Reference the keyPair so the closure reads it at sign-time (after dispose, it's undefined)
-    const keyPair = this._ownerAccount.keyPair
-    const ownerAddress = this._ownerAccountAddress
-
-    return toAccount({
-      address: ownerAddress,
-
-      async sign ({ hash }) {
-        return _signHashWithBytes(hash, keyPair.privateKey)
-      },
-
-      async signMessage ({ message }) {
-        return _signHashWithBytes(hashMessage(message), keyPair.privateKey)
-      },
-
-      async signTransaction (transaction, { serializer = serializeTransaction } = {}) {
-        const sig = _signToObject(
-          keccak256(serializer(transaction)),
-          keyPair.privateKey
-        )
-        return serializer(transaction, sig)
-      },
-
-      async signTypedData (typedData) {
-        return _signHashWithBytes(hashTypedData(typedData), keyPair.privateKey)
-      }
-    })
   }
 
   /**
@@ -329,11 +277,12 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
   /** @private */
   async _sendUserOperation (txs, { amountToApprove, ...config }) {
-    const { useNativeCoins, paymasterToken, isSponsored, sponsorshipPolicyId } = config
+    if (this._disposed) {
+      throw new Error('Private key has been disposed.')
+    }
 
-    const smartAccountClient = await this._getSmartAccountClient(config)
-
-    const paymasterTokenAddress = (isSponsored || useNativeCoins) ? undefined : paymasterToken?.address
+    const mode = resolvePaymasterMode(config)
+    const provider = mode === PaymasterMode.NATIVE ? null : resolvePaymasterProvider(config)
 
     const calls = txs.map(tx => ({
       to: tx.to,
@@ -341,103 +290,37 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       data: tx.data || '0x'
     }))
 
-    if (paymasterTokenAddress && amountToApprove && amountToApprove > 0n) {
-      const approveAbi = [{ name: 'approve', type: 'function', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }]
-      // Reset allowance to 0 first (required by USDT on mainnet), then set new amount
-      calls.unshift(
-        {
-          to: paymasterTokenAddress,
-          value: 0n,
-          data: encodeFunctionData({ abi: approveAbi, functionName: 'approve', args: [config.paymasterAddress, 0n] })
-        },
-        {
-          to: paymasterTokenAddress,
-          value: 0n,
-          data: encodeFunctionData({ abi: approveAbi, functionName: 'approve', args: [config.paymasterAddress, amountToApprove] })
-        }
-      )
+    const needsManualApprove = mode === PaymasterMode.TOKEN &&
+      provider === PaymasterProvider.PIMLICO &&
+      amountToApprove && amountToApprove > 0n
+
+    if (needsManualApprove) {
+      calls.unshift(...buildApproveCalls(
+        config.paymasterToken.address,
+        config.paymasterAddress,
+        amountToApprove
+      ))
     }
 
-    const needsGasBuffer = _needsGasBuffer(config.bundlerUrl)
-
-    const paymasterContext = paymasterTokenAddress
-      ? { token: paymasterTokenAddress }
-      : isSponsored && sponsorshipPolicyId
-        ? { sponsorshipPolicyId }
-        : undefined
-
     try {
-      let hash
+      const { userOp, smartAccount, chainId } = await this._buildUserOperation(calls, config)
 
-      if (!needsGasBuffer) {
-        hash = await smartAccountClient.sendUserOperation({ calls, paymasterContext })
-      } else {
-        // Double-prepare pipeline: estimate → bump gas → re-prepare → sign → send
-        const { _prepareWithGasBuffer } = await import('./wallet-account-read-only-evm-erc-4337.js')
-        const { formatUserOperationRequest } = await import('viem/account-abstraction')
+      userOp.signature = signUserOperationWithKeyBytes({
+        userOp,
+        privateKeyBytes: this._ownerAccount.keyPair.privateKey,
+        ownerAddress: this._ownerAccountAddress,
+        chainId,
+        entrypointAddress: smartAccount.entrypointAddress,
+        safe4337ModuleAddress: smartAccount.safe4337ModuleAddress
+      })
 
-        const prepared = await _prepareWithGasBuffer(smartAccountClient, { calls, paymasterContext })
-        const signature = await smartAccountClient.account.signUserOperation(prepared)
-
-        const rpcParams = formatUserOperationRequest({ ...prepared, signature })
-
-        hash = await smartAccountClient.request({
-          method: 'eth_sendUserOperation',
-          params: [rpcParams, smartAccountClient.account.entryPoint.address]
-        })
-      }
-
-      return hash
+      const bundler = new Bundler(config.bundlerUrl)
+      return await bundler.sendUserOperation(userOp, smartAccount.entrypointAddress)
     } catch (err) {
       if (err.message?.includes('AA50')) {
         throw new Error('Not enough funds on the safe account to repay the paymaster.')
       }
-
       throw err
     }
-  }
-}
-
-/**
- * Signs a hash using a Uint8Array private key via @noble/curves secp256k1.
- * The private key never touches a string representation.
- *
- * @param {string} hash - The hash to sign (hex string with 0x prefix).
- * @param {Uint8Array} privateKeyBytes - The 32-byte private key.
- * @returns {string} The serialized signature as a hex string.
- */
-function _signHashWithBytes (hash, privateKeyBytes) {
-  if (!privateKeyBytes) {
-    throw new Error('Private key has been disposed.')
-  }
-
-  const sig = _signToObject(hash, privateKeyBytes)
-
-  return serializeSignature({ ...sig, to: 'hex' })
-}
-
-/**
- * Signs a hash and returns a signature object (r, s, v, yParity).
- *
- * @param {string} hash - The hash to sign (hex string with 0x prefix).
- * @param {Uint8Array} privateKeyBytes - The 32-byte private key.
- * @returns {{ r: string, s: string, v: bigint, yParity: number }} The signature object.
- */
-function _signToObject (hash, privateKeyBytes) {
-  if (!privateKeyBytes) {
-    throw new Error('Private key has been disposed.')
-  }
-
-  const hashBytes = hexToBytes(hash)
-  const { r, s, recovery } = secp256k1.sign(hashBytes, privateKeyBytes, {
-    lowS: true,
-    extraEntropy: false
-  })
-
-  return {
-    r: numberToHex(r, { size: 32 }),
-    s: numberToHex(s, { size: 32 }),
-    v: recovery ? 28n : 27n,
-    yParity: recovery
   }
 }

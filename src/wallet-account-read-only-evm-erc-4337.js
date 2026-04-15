@@ -19,25 +19,21 @@ import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
 import {
-  createPublicClient,
-  http,
-  encodeFunctionData,
-  keccak256,
-  encodePacked,
-  getContractAddress,
-  hexToBigInt,
-  getAddress,
-  createClient,
-  defineChain
-} from 'viem'
+  // eslint-disable-next-line camelcase
+  SafeAccountV0_3_0 as SafeAccount030,
+  Bundler,
+  calculateUserOperationMaxGasCost
+} from 'abstractionkit'
 
-import { createBundlerClient, entryPoint07Address } from 'viem/account-abstraction'
-
-import { toSafeSmartAccount } from 'permissionless/accounts'
-
-import { createSmartAccountClient } from 'permissionless'
-
-import { createPimlicoClient } from 'permissionless/clients/pimlico'
+import {
+  PaymasterMode,
+  PaymasterProvider,
+  applyPaymasterToUserOp,
+  buildApproveCalls,
+  getTokenExchangeRate,
+  resolvePaymasterMode,
+  resolvePaymasterProvider
+} from './paymaster.js'
 
 import { ConfigurationError } from './errors.js'
 
@@ -75,12 +71,21 @@ const FEE_TOLERANCE_COEFFICIENT = 120n
  */
 
 /**
+ * @typedef {Object} OnchainIdentifier
+ * @property {string} project - The project name included in the 50-byte on-chain marker.
+ * @property {'Web' | 'Mobile' | 'Safe App' | 'Widget'} [platform]
+ * @property {string} [tool]
+ * @property {string} [toolVersion]
+ */
+
+/**
  * @typedef {Object} EvmErc4337WalletCommonConfig
  * @property {number} chainId - The blockchain's id (e.g., 1 for ethereum).
  * @property {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
  * @property {string} bundlerUrl - The url of the bundler service.
  * @property {string} entryPointAddress - The address of the entry point smart contract.
  * @property {string} safeModulesVersion - The safe modules version.
+ * @property {OnchainIdentifier | string} [onchainIdentifier] - Optional AbstractionKit on-chain identifier. Appends a 50-byte project marker to every UserOperation callData. Pass a string to reuse it as the project name, or a full object for more control.
  */
 
 /**
@@ -115,50 +120,18 @@ const FEE_TOLERANCE_COEFFICIENT = 120n
 
 export const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b11cb7eb4e5a1f6'
 
-const SAFE_L2_SINGLETON = '0x29fcB43b46531BcA003ddC8FCB67FFE91900C762'
-const SAFE_PROXY_FACTORY = '0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67'
-
 const SAFE_MODULES_MAP = {
   '0.3.0': {
     safe4337ModuleAddress: '0x75cf11467937ce3F2f357CE24ffc3DBF8fD5c226',
     safeModuleSetupAddress: '0x2dd68b007B46fBe91B9A7c3EDa5A7a1063cB5b47',
     entryPointVersion: '0.7'
-  },
-  '0.2.0': {
-    safe4337ModuleAddress: '0xa581c4A4DB7175302464fF3C06380BC3270b4037',
-    safeModuleSetupAddress: '0x8EcD4ec46D4D2a6B64fE960B3D64e8B94B2234eb',
-    entryPointVersion: '0.6'
   }
 }
 
-const PROXY_CREATION_CODE = '0x608060405234801561001057600080fd5b506040516101e63803806101e68339818101604052602081101561003357600080fd5b8101908080519060200190929190505050600073ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff1614156100ca576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260228152602001806101c46022913960400191505060405180910390fd5b806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505060ab806101196000396000f3fe608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033496e76616c69642073696e676c65746f6e20616464726573732070726f7669646564'
+/** Bundlers known to underestimate gas and require a buffer. */
+const BUNDLERS_NEEDING_GAS_BUFFER = ['candide']
 
-const ENABLE_MODULES_ABI = [{
-  inputs: [{ internalType: 'address[]', name: 'modules', type: 'address[]' }],
-  name: 'enableModules',
-  outputs: [],
-  stateMutability: 'nonpayable',
-  type: 'function'
-}]
-
-const SETUP_ABI = [{
-  inputs: [
-    { name: '_owners', type: 'address[]' },
-    { name: '_threshold', type: 'uint256' },
-    { name: 'to', type: 'address' },
-    { name: 'data', type: 'bytes' },
-    { name: 'fallbackHandler', type: 'address' },
-    { name: 'paymentToken', type: 'address' },
-    { name: 'payment', type: 'uint256' },
-    { name: 'paymentReceiver', type: 'address' }
-  ],
-  name: 'setup',
-  outputs: [],
-  stateMutability: 'nonpayable',
-  type: 'function'
-}]
-
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+const GAS_ESTIMATION_BUFFER = 150
 
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
   /**
@@ -181,20 +154,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     this._config = config
 
     /**
-     * Map of SmartAccountClient instances cached by configuration.
+     * Cached AbstractionKit bundler.
      *
      * @protected
-     * @type {Map<string, Object>}
+     * @type {Bundler | undefined}
      */
-    this._smartAccountClients = new Map()
-
-    /**
-     * Cached bundler client.
-     *
-     * @protected
-     * @type {Object | undefined}
-     */
-    this._bundlerClient = undefined
+    this._bundler = undefined
 
     /**
      * Cached quote from the last fee estimation.
@@ -217,57 +182,16 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Predicts the address of a safe account.
+   * Predicts the address of a safe account. Delegates to AbstractionKit's
+   * offline CREATE2 derivation (no RPC calls).
    *
    * @param {string} owner - The safe owner's address.
-   * @param {Pick<EvmErc4337WalletConfig, 'chainId' | 'safeModulesVersion'>} config - The safe configuration
+   * @param {Pick<EvmErc4337WalletConfig, 'safeModulesVersion' | 'onchainIdentifier' | 'entryPointAddress'>} config - The safe configuration.
    * @returns {string} The Safe address.
    */
-  static predictSafeAddress (owner, { safeModulesVersion }) {
-    const modules = SAFE_MODULES_MAP[safeModulesVersion]
-    if (!modules) {
-      throw new Error(`Unsupported safe modules version: ${safeModulesVersion}`)
-    }
-
-    const enableModulesData = encodeFunctionData({
-      abi: ENABLE_MODULES_ABI,
-      functionName: 'enableModules',
-      args: [[modules.safe4337ModuleAddress]]
-    })
-
-    const initializer = encodeFunctionData({
-      abi: SETUP_ABI,
-      functionName: 'setup',
-      args: [
-        [owner],
-        1n,
-        modules.safeModuleSetupAddress,
-        enableModulesData,
-        modules.safe4337ModuleAddress,
-        ZERO_ADDRESS,
-        0n,
-        ZERO_ADDRESS
-      ]
-    })
-
-    const salt = keccak256(
-      encodePacked(
-        ['bytes32', 'uint256'],
-        [keccak256(encodePacked(['bytes'], [initializer])), BigInt(SALT_NONCE)]
-      )
-    )
-
-    const deploymentCode = encodePacked(
-      ['bytes', 'uint256'],
-      [PROXY_CREATION_CODE, hexToBigInt(SAFE_L2_SINGLETON)]
-    )
-
-    return getAddress(getContractAddress({
-      from: SAFE_PROXY_FACTORY,
-      salt,
-      bytecode: deploymentCode,
-      opcode: 'CREATE2'
-    }))
+  static predictSafeAddress (owner, config) {
+    const overrides = WalletAccountReadOnlyEvmErc4337._getInitCodeOverrides(config)
+    return SafeAccount030.createAccountAddress([owner], overrides)
   }
 
   /**
@@ -380,21 +304,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<EvmTransactionReceipt | null>} – The receipt, or null if the transaction has not been included in a block yet.
    */
   async getTransactionReceipt (hash) {
-    const bundlerClient = this._getBundlerClient()
-
+    const bundler = this._getBundler()
     const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
 
     try {
-      const userOp = await bundlerClient.request({
-        method: 'eth_getUserOperationByHash',
-        params: [hash]
-      })
+      const result = await bundler.getUserOperationByHash(hash)
+      if (!result || !result.transactionHash) return null
 
-      if (!userOp || !userOp.transactionHash) {
-        return null
-      }
-
-      return await evmReadOnlyAccount.getTransactionReceipt(userOp.transactionHash)
+      return await evmReadOnlyAccount.getTransactionReceipt(result.transactionHash)
     } catch {
       return null
     }
@@ -407,15 +324,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<UserOperationReceipt | null>} – The receipt, or null if the user operation has not been included in a block yet.
    */
   async getUserOperationReceipt (hash) {
-    const bundlerClient = this._getBundlerClient()
+    const bundler = this._getBundler()
 
     try {
-      const receipt = await bundlerClient.request({
-        method: 'eth_getUserOperationReceipt',
-        params: [hash]
-      })
-
-      return receipt
+      return await bundler.getUserOperationReceipt(hash)
     } catch {
       return null
     }
@@ -501,151 +413,56 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Returns a viem account representing the owner (for use with permissionless.js).
-   * Read-only accounts use a non-signing account.
+   * Builds an AbstractionKit SafeAccountV0_3_0 instance for the current owner.
+   * Omits factoryAddress/factoryData when the account is already deployed, so
+   * subsequent UserOperations don't try to redeploy it (which would revert at
+   * the EntryPoint).
    *
    * @protected
-   * @returns {import('viem').Account} The viem account.
+   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config]
+   * @returns {Promise<object>} The AbstractionKit SafeAccountV0_3_0 instance.
    */
-  _getViemOwnerAccount () {
-    return {
-      address: this._ownerAccountAddress,
-      type: 'local',
-      source: 'custom',
-      publicKey: this._ownerAccountAddress,
-      async signMessage () { throw new Error('Read-only account cannot sign') },
-      async signTransaction () { throw new Error('Read-only account cannot sign') },
-      async signTypedData () { throw new Error('Read-only account cannot sign') }
-    }
-  }
+  async _getSmartAccount (config = this._config) {
+    const overrides = WalletAccountReadOnlyEvmErc4337._getInitCodeOverrides(config)
+    const safeAddress = await this.getAddress()
 
-  /**
-   * Returns a viem public client.
-   *
-   * @protected
-   * @returns {import('viem').PublicClient} The public client.
-   */
-  _getPublicClient () {
-    if (!this._publicClient) {
-      const providerUrl = typeof this._config.provider === 'string'
-        ? this._config.provider
-        : undefined
-
-      this._publicClient = createPublicClient({
-        chain: this._getChainDefinition(),
-        transport: http(providerUrl)
+    if (await this._isAccountDeployed(safeAddress)) {
+      return new SafeAccount030(safeAddress, {
+        entrypointAddress: overrides.entrypointAddress,
+        safe4337ModuleAddress: overrides.safe4337ModuleAddress,
+        onChainIdentifierParams: overrides.onChainIdentifierParams,
+        onChainIdentifier: overrides.onChainIdentifier,
+        safeAccountSingleton: overrides.safeAccountSingleton
       })
     }
 
-    return this._publicClient
+    return SafeAccount030.initializeNewAccount([this._ownerAccountAddress], overrides)
   }
 
   /**
-   * Returns a viem chain definition from config.
+   * Checks whether the Safe account has already been deployed.
    *
    * @protected
-   * @returns {import('viem').Chain} The chain definition.
+   * @param {string} address
+   * @returns {Promise<boolean>}
    */
-  _getChainDefinition () {
-    const rpcUrl = typeof this._config.provider === 'string'
-      ? this._config.provider
-      : 'http://localhost:8545'
-
-    return defineChain({
-      id: this._config.chainId,
-      name: 'custom',
-      nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-      rpcUrls: { default: { http: [rpcUrl] } }
-    })
+  async _isAccountDeployed (address) {
+    const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
+    const code = await evmReadOnlyAccount._provider.getCode(address)
+    return typeof code === 'string' && code !== '0x' && code !== '0x0'
   }
 
   /**
-   * Returns a bundler client for querying UserOperations.
+   * Returns an AbstractionKit Bundler for querying UserOperations.
    *
    * @protected
-   * @returns {Object} The bundler client.
+   * @returns {Bundler} The bundler.
    */
-  _getBundlerClient () {
-    if (!this._bundlerClient) {
-      this._bundlerClient = createClient({
-        transport: http(this._config.bundlerUrl)
-      })
+  _getBundler () {
+    if (!this._bundler) {
+      this._bundler = new Bundler(this._config.bundlerUrl)
     }
-
-    return this._bundlerClient
-  }
-
-  /**
-   * Returns a Smart Account Client configured for the given mode.
-   *
-   * @protected
-   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The configuration object.
-   * @returns {Promise<Object>} The smart account client.
-   */
-  async _getSmartAccountClient (config = this._config) {
-    const { isSponsored, useNativeCoins, paymasterUrl, paymasterAddress, paymasterToken } = config
-
-    let cacheKey
-    if (useNativeCoins) {
-      cacheKey = 'native'
-    } else if (isSponsored) {
-      cacheKey = `sponsored:${paymasterUrl}`
-    } else {
-      cacheKey = `paymaster:${paymasterUrl}:${paymasterAddress}`
-    }
-
-    if (!this._smartAccountClients.has(cacheKey)) {
-      const publicClient = this._getPublicClient()
-      const viemOwner = this._getViemOwnerAccount()
-
-      const safeAccount = await toSafeSmartAccount({
-        client: publicClient,
-        owners: [viemOwner],
-        version: '1.4.1',
-        entryPoint: {
-          address: config.entryPointAddress,
-          version: '0.7'
-        },
-        saltNonce: BigInt(SALT_NONCE),
-        safeSingletonAddress: SAFE_L2_SINGLETON,
-        useMultiSendForSetup: false
-      })
-
-      const publicClientForGas = this._getPublicClient()
-
-      const clientConfig = {
-        account: safeAccount,
-        chain: this._getChainDefinition(),
-        bundlerTransport: http(config.bundlerUrl),
-        userOperation: {
-          estimateFeesPerGas: async () => {
-            const block = await publicClientForGas.getBlock()
-            const baseFee = block.baseFeePerGas || 1000000000n
-            const maxPriorityFeePerGas = 1500000000n
-            const maxFeePerGas = baseFee * 2n + maxPriorityFeePerGas
-            return { maxFeePerGas, maxPriorityFeePerGas }
-          }
-        }
-      }
-
-      if (!useNativeCoins && paymasterUrl) {
-        const pimlicoPaymaster = createPimlicoClient({
-          transport: http(paymasterUrl),
-          entryPoint: {
-            address: config.entryPointAddress,
-            version: '0.7'
-          }
-        })
-
-        clientConfig.paymaster = pimlicoPaymaster
-      }
-
-      const smartAccountClient = createSmartAccountClient(clientConfig)
-
-      this._smartAccountClients.set(cacheKey, smartAccountClient)
-    }
-
-    return this._smartAccountClients.get(cacheKey)
+    return this._bundler
   }
 
   /**
@@ -676,48 +493,6 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Returns the token exchange rate from the paymaster.
-   *
-   * @private
-   * @param {string} tokenAddress - The token address.
-   * @param {string} paymasterUrl - The paymaster URL.
-   * @param {string} entryPointAddress - The entry point address.
-   * @returns {Promise<bigint>} The exchange rate.
-   */
-  async _getTokenExchangeRate (tokenAddress, paymasterUrl, entryPointAddress) {
-    const isPimlico = paymasterUrl?.includes('pimlico')
-    const paymasterClient = createClient({
-      transport: http(paymasterUrl)
-    })
-
-    if (isPimlico) {
-      const chainId = await this._getChainId()
-
-      const response = await paymasterClient.request({
-        method: 'pimlico_getTokenQuotes',
-        params: [
-          { tokens: [tokenAddress] },
-          entryPointAddress,
-          `0x${chainId.toString(16)}`
-        ]
-      })
-      return BigInt(response.quotes[0].exchangeRate)
-    } else {
-      const response = await paymasterClient.request({
-        method: 'pm_supportedERC20Tokens',
-        params: [entryPointAddress]
-      })
-      const matchingToken = response.tokens.find(
-        (token) => token.address.toLowerCase() === tokenAddress.toLowerCase()
-      )
-      if (!matchingToken) {
-        throw new Error(`No exchange rate found for token: ${tokenAddress}`)
-      }
-      return BigInt(matchingToken.exchangeRate)
-    }
-  }
-
-  /**
    * Returns a serialized key for transaction cache matching.
    *
    * @protected
@@ -728,95 +503,166 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     return JSON.stringify([tx].flat(), (_, v) => typeof v === 'bigint' ? v.toString() : v)
   }
 
+  /**
+   * Builds AbstractionKit InitCodeOverrides from the wallet configuration.
+   *
+   * @protected
+   * @param {Partial<EvmErc4337WalletConfig>} config
+   * @returns {object}
+   */
+  static _getInitCodeOverrides (config) {
+    const { safeModulesVersion, entryPointAddress, onchainIdentifier } = config
+    const modules = SAFE_MODULES_MAP[safeModulesVersion]
+    if (!modules) {
+      throw new Error(`Unsupported safe modules version: ${safeModulesVersion}`)
+    }
+
+    const overrides = {
+      c2Nonce: BigInt(SALT_NONCE),
+      safe4337ModuleAddress: modules.safe4337ModuleAddress,
+      safeModuleSetupAddress: modules.safeModuleSetupAddress
+    }
+
+    if (entryPointAddress) {
+      overrides.entrypointAddress = entryPointAddress
+    }
+
+    if (onchainIdentifier) {
+      overrides.onChainIdentifierParams = typeof onchainIdentifier === 'string'
+        ? { project: onchainIdentifier }
+        : onchainIdentifier
+    }
+
+    return overrides
+  }
+
+  /**
+   * Builds a UserOperation via AbstractionKit with paymaster fields applied.
+   * Shared by gas quoting (read-only) and sending (full-access).
+   *
+   * - Native (no paymaster): delegates to AK's built-in estimation.
+   * - Candide paymaster: builds the base UserOperation without AK's estimation,
+   *   then lets CandidePaymaster run its own stub → estimate → final pipeline.
+   * - Pimlico (ERC-7677) paymaster: builds the base UserOperation without AK's
+   *   estimation, runs pm_getPaymasterStubData, estimates gas through the bundler
+   *   with the stub applied, then calls pm_getPaymasterData to finalize.
+   *
+   * @protected
+   * @param {object[]} calls
+   * @param {object} config
+   * @returns {Promise<object>} The fully-populated UserOperation ready to sign.
+   */
+  async _buildUserOperation (calls, config) {
+    const smartAccount = await this._getSmartAccount(config)
+    const chainId = await this._getChainId()
+
+    const mode = resolvePaymasterMode(config)
+    const provider = mode === PaymasterMode.NATIVE ? null : resolvePaymasterProvider(config)
+
+    const needsGasBuffer = _needsGasBuffer(config.bundlerUrl)
+    const gasBufferPercent = needsGasBuffer ? GAS_ESTIMATION_BUFFER : 0
+    const providerRpc = typeof config.provider === 'string' ? config.provider : undefined
+
+    if (mode === PaymasterMode.NATIVE) {
+      const gasOverrides = needsGasBuffer
+        ? {
+            callGasLimitPercentageMultiplier: gasBufferPercent,
+            verificationGasLimitPercentageMultiplier: gasBufferPercent
+          }
+        : {}
+
+      const userOp = await smartAccount.createUserOperation(
+        calls,
+        providerRpc,
+        config.bundlerUrl,
+        gasOverrides
+      )
+
+      return { userOp, smartAccount, provider, mode, chainId }
+    }
+
+    // Paymaster paths: skip AK's estimation, let the paymaster adapter drive it.
+    const baseUserOp = await smartAccount.createUserOperation(
+      calls,
+      providerRpc,
+      undefined,
+      { callGasLimit: 0n, verificationGasLimit: 0n, preVerificationGas: 0n }
+    )
+
+    const userOp = await applyPaymasterToUserOp({
+      provider,
+      mode,
+      smartAccount,
+      userOp: baseUserOp,
+      config,
+      chainId,
+      gasBufferPercent
+    })
+
+    return { userOp, smartAccount, provider, mode, chainId }
+  }
+
   /** @private */
   async _getUserOperationGasCost (txs, { amountToApprove, ...config }) {
-    const smartAccountClient = await this._getSmartAccountClient(config)
+    const mode = resolvePaymasterMode(config)
+    const provider = mode === PaymasterMode.NATIVE ? null : resolvePaymasterProvider(config)
 
-    const address = await this.getAddress()
+    const calls = txs.map(tx => ({
+      to: tx.to,
+      value: tx.value !== undefined ? BigInt(tx.value) : 0n,
+      data: tx.data || '0x'
+    }))
 
-    const paymasterTokenAddress = config.useNativeCoins ? undefined : config.paymasterToken?.address
+    // Pimlico token paymaster requires a manual approve prepended; Candide
+    // prepends it automatically inside createTokenPaymasterUserOperation.
+    const needsManualApprove = mode === PaymasterMode.TOKEN &&
+      provider === PaymasterProvider.PIMLICO &&
+      amountToApprove && amountToApprove > 0n
+
+    if (needsManualApprove) {
+      calls.unshift(...buildApproveCalls(
+        config.paymasterToken.address,
+        config.paymasterAddress,
+        amountToApprove
+      ))
+    }
 
     try {
-      const calls = txs.map(tx => ({
-        to: tx.to,
-        value: tx.value !== undefined ? BigInt(tx.value) : 0n,
-        data: tx.data || '0x'
-      }))
+      const { userOp, smartAccount } = await this._buildUserOperation(calls, config)
 
-      if (paymasterTokenAddress && amountToApprove && amountToApprove > 0n) {
-        const approveAbi = [{ name: 'approve', type: 'function', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }]
-        // Reset allowance to 0 first (required by USDT on mainnet), then set new amount
-        calls.unshift(
-          {
-            to: paymasterTokenAddress,
-            value: 0n,
-            data: encodeFunctionData({ abi: approveAbi, functionName: 'approve', args: [config.paymasterAddress, 0n] })
-          },
-          {
-            to: paymasterTokenAddress,
-            value: 0n,
-            data: encodeFunctionData({ abi: approveAbi, functionName: 'approve', args: [config.paymasterAddress, amountToApprove] })
-          }
+      if (mode !== PaymasterMode.TOKEN) {
+        return calculateUserOperationMaxGasCost(userOp)
+      }
+
+      if (provider === PaymasterProvider.CANDIDE) {
+        const { CandidePaymaster } = await import('abstractionkit')
+        const paymaster = new CandidePaymaster(config.paymasterUrl)
+        return await paymaster.calculateUserOperationErc20TokenMaxGasCost(
+          smartAccount,
+          userOp,
+          config.paymasterToken.address,
+          { entrypoint: config.entryPointAddress }
         )
       }
 
-      const needsGasBuffer = _needsGasBuffer(config.bundlerUrl)
+      const gasCost = calculateUserOperationMaxGasCost(userOp)
+      const exchangeRate = await getTokenExchangeRate({
+        provider,
+        tokenAddress: config.paymasterToken.address,
+        paymasterUrl: config.paymasterUrl,
+        entryPointAddress: config.entryPointAddress,
+        chainId: await this._getChainId()
+      })
 
-      const prepareParams = {
-        calls,
-        paymasterContext: paymasterTokenAddress
-          ? { token: paymasterTokenAddress }
-          : undefined
-      }
-
-      const userOp = needsGasBuffer
-        ? await _prepareWithGasBuffer(smartAccountClient, prepareParams)
-        : await smartAccountClient.prepareUserOperation(prepareParams)
-
-      const {
-        callGasLimit,
-        verificationGasLimit,
-        preVerificationGas,
-        paymasterVerificationGasLimit,
-        paymasterPostOpGasLimit,
-        maxFeePerGas
-      } = userOp
-
-      const gasCost = (
-        (callGasLimit || 0n) +
-        (verificationGasLimit || 0n) +
-        (preVerificationGas || 0n) +
-        (paymasterVerificationGasLimit || 0n) +
-        (paymasterPostOpGasLimit || 0n)
-      ) * (maxFeePerGas || 0n)
-
-      if (!paymasterTokenAddress) {
-        return gasCost
-      }
-
-      const exchangeRate = await this._getTokenExchangeRate(
-        paymasterTokenAddress,
-        config.paymasterUrl,
-        config.entryPointAddress
-      )
-
-      const gasCostInPaymasterToken = (gasCost * exchangeRate + (10n ** 18n - 1n)) / (10n ** 18n)
-
-      return gasCostInPaymasterToken
+      return (gasCost * exchangeRate + (10n ** 18n - 1n)) / (10n ** 18n)
     } catch (error) {
       if (error.message?.includes('AA50')) {
         throw new Error('Simulation failed: not enough funds in the safe account to repay the paymaster.')
       }
-
       throw error
     }
   }
 }
-
-const GAS_ESTIMATION_BUFFER = 150n
-
-/** Bundlers known to underestimate gas and require a buffer. */
-const BUNDLERS_NEEDING_GAS_BUFFER = ['candide']
 
 /**
  * @param {string} [bundlerUrl]
@@ -825,24 +671,4 @@ const BUNDLERS_NEEDING_GAS_BUFFER = ['candide']
 export function _needsGasBuffer (bundlerUrl) {
   if (!bundlerUrl) return false
   return BUNDLERS_NEEDING_GAS_BUFFER.some(name => bundlerUrl.includes(name))
-}
-
-/**
- * Prepares a UserOperation with a gas estimation buffer.
- * Uses a double-prepare pipeline: estimate → bump gas 150% → re-prepare with bumped values.
- * The second prepare skips gas estimation (values are pre-set) but still calls the paymaster
- * to get a fresh signature covering the bumped gas limits.
- *
- * @param {Object} smartAccountClient - The smart account client.
- * @param {Object} params - The prepareUserOperation params.
- * @returns {Promise<Object>} The prepared UserOperation with buffered gas limits.
- */
-export async function _prepareWithGasBuffer (smartAccountClient, params) {
-  const estimated = await smartAccountClient.prepareUserOperation(params)
-
-  return smartAccountClient.prepareUserOperation({
-    ...params,
-    callGasLimit: estimated.callGasLimit * GAS_ESTIMATION_BUFFER / 100n,
-    verificationGasLimit: estimated.verificationGasLimit * GAS_ESTIMATION_BUFFER / 100n
-  })
 }

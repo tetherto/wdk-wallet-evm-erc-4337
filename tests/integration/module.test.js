@@ -188,6 +188,25 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     expect(safeAddress0).toBe(ACCOUNT0.safeAddress)
   }, TIMEOUT)
 
+  test('should sign a transaction via the owner account', async () => {
+    const account0 = await wallet.getAccountByPath("0'/0/0")
+
+    const TRANSACTION = {
+      to: '0xa460AEbce0d3A4BecAd8ccf9D6D4861296c503Bd',
+      value: 1_000n,
+      gasLimit: 21_000n,
+      maxFeePerGas: 2_000_000_000n,
+      maxPriorityFeePerGas: 1_000_000_000n,
+      nonce: 0,
+      chainId: 1n
+    }
+
+    const signedTx = await account0.signTransaction(TRANSACTION)
+
+    expect(typeof signedTx).toBe('string')
+    expect(signedTx.startsWith('0x')).toBe(true)
+  }, TIMEOUT)
+
   test('should derive an account, quote the cost of a tx and check the fee', async () => {
     const account0 = await wallet.getAccountByPath("0'/0/0")
     const account1 = await wallet.getAccountByPath("0'/0/1")

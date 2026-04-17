@@ -50,6 +50,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      */
     signTypedData({ domain, types, message }: TypedData): Promise<string>;
     /**
+     * Signs a transaction without broadcasting.
+     *
+     * @param {EvmTransaction} tx - The transaction to sign.
+     * @returns {Promise<string>} The signed transaction as a hex string.
+     */
+    signTransaction(tx: EvmTransaction): Promise<string>;
+    /**
      * Approves a specific amount of tokens to a spender.
      *
      * @param {ApproveOptions} options - The approve options.

@@ -118,6 +118,16 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 
   /**
+   * Signs a transaction without broadcasting.
+   *
+   * @param {EvmTransaction} tx - The transaction to sign.
+   * @returns {Promise<string>} The signed transaction as a hex string.
+   */
+  async signTransaction (tx) {
+    return await this._ownerAccount.signTransaction(tx)
+  }
+
+  /**
    * Approves a specific amount of tokens to a spender.
    *
    * @param {ApproveOptions} options - The approve options.

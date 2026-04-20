@@ -50,15 +50,15 @@ const FEE_TOLERANCE_COEFFICIENT = 120n
 
 /**
  * @typedef {Object} UserOperationReceipt
- * @property {string} userOpHash
- * @property {string} sender
- * @property {string} nonce
- * @property {string} [paymaster]
- * @property {bigint} actualGasCost
- * @property {bigint} actualGasUsed
- * @property {boolean} success
- * @property {Object} receipt
- * @property {string[]} [logs]
+ * @property {string} userOpHash - The hash of the user operation.
+ * @property {string} sender - The sender (smart account) address.
+ * @property {string} nonce - The nonce used by the user operation.
+ * @property {string} [paymaster] - The paymaster address, if one was used.
+ * @property {bigint} actualGasCost - The actual gas cost charged (in wei).
+ * @property {bigint} actualGasUsed - The actual gas units consumed.
+ * @property {boolean} success - Whether the inner account execution succeeded.
+ * @property {Object} receipt - The underlying transaction receipt.
+ * @property {string[]} [logs] - Encoded logs emitted during execution.
  */
 
 /**

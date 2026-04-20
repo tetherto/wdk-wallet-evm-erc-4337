@@ -22,18 +22,15 @@ import {
   // eslint-disable-next-line camelcase
   SafeAccountV0_3_0 as SafeAccount030,
   Bundler,
+  Erc7677Paymaster,
   calculateUserOperationMaxGasCost
 } from 'abstractionkit'
 
 import {
-  DUMMY_SAFE_4337_SIGNATURE,
   PaymasterMode,
-  PaymasterProvider,
   applyPaymasterToUserOp,
-  buildApproveCalls,
-  getTokenExchangeRate,
-  resolvePaymasterMode,
-  resolvePaymasterProvider
+  fetchBundlerGasPrice,
+  resolvePaymasterMode
 } from './paymaster.js'
 
 import { ConfigurationError } from './errors.js'
@@ -128,13 +125,6 @@ const SAFE_MODULES_MAP = {
     entryPointVersion: '0.7'
   }
 }
-
-/** Bundlers known to underestimate gas and require a buffer. */
-const BUNDLERS_NEEDING_GAS_BUFFER = ['candide']
-
-// Percentage to add on top of bundler estimates for bundlers known to
-// underestimate. AbstractionKit convention: `50` → estimate * 1.5.
-const GAS_ESTIMATION_BUFFER = 50
 
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
   /**
@@ -264,16 +254,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       this._validateConfig(mergedConfig)
     }
 
-    const { isSponsored, useNativeCoins } = mergedConfig
+    const { isSponsored } = mergedConfig
 
     if (isSponsored) {
       return { fee: 0n }
     }
 
-    const estimatedFee = await this._getUserOperationGasCost([tx].flat(), {
-      ...mergedConfig,
-      amountToApprove: useNativeCoins ? 0n : BigInt(Number.MAX_SAFE_INTEGER)
-    })
+    const estimatedFee = await this._getUserOperationGasCost([tx].flat(), mergedConfig)
 
     const fee = BigInt(estimatedFee) * FEE_TOLERANCE_COEFFICIENT / 100n
 
@@ -544,11 +531,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Shared by gas quoting (read-only) and sending (full-access).
    *
    * - Native (no paymaster): delegates to AK's built-in estimation.
-   * - Candide paymaster: builds the base UserOperation without AK's estimation,
-   *   then lets CandidePaymaster run its own stub → estimate → final pipeline.
-   * - Pimlico (ERC-7677) paymaster: builds the base UserOperation without AK's
-   *   estimation, runs pm_getPaymasterStubData, estimates gas through the bundler
-   *   with the stub applied, then calls pm_getPaymasterData to finalize.
+   * - Candide paymaster: runs AK's full estimation via the Candide bundler,
+   * All paymaster flows use the same pipeline:
+   *   1. Fetch bundler-specific gas prices if needed (e.g. Pimlico).
+   *   2. Full AK estimation via createUserOperation with the bundler.
+   *   3. Erc7677Paymaster applies paymaster fields with re-estimation.
    *
    * @protected
    * @param {object[]} calls
@@ -560,111 +547,80 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     const chainId = await this._getChainId()
 
     const mode = resolvePaymasterMode(config)
-    const provider = mode === PaymasterMode.NATIVE ? null : resolvePaymasterProvider(config)
-
-    const needsGasBuffer = _needsGasBuffer(config.bundlerUrl)
-    const gasBufferPercent = needsGasBuffer ? GAS_ESTIMATION_BUFFER : 0
     const providerRpc = typeof config.provider === 'string' ? config.provider : undefined
 
-    if (mode === PaymasterMode.NATIVE) {
-      const gasOverrides = needsGasBuffer
-        ? {
-            callGasLimitPercentageMultiplier: gasBufferPercent,
-            verificationGasLimitPercentageMultiplier: gasBufferPercent
-          }
-        : {}
+    // Fetch bundler-specific gas prices when needed (e.g. Pimlico requires
+    // higher fees than the node RPC reports). Passed as overrides so AK
+    // skips its node gas-price fetch. Needed for all modes — native UserOps
+    // are also submitted through the bundler.
+    const gasPrice = await fetchBundlerGasPrice(config.bundlerUrl)
 
-      const userOp = await smartAccount.createUserOperation(
-        calls,
-        providerRpc,
-        config.bundlerUrl,
-        gasOverrides
-      )
-
-      return { userOp, smartAccount, provider, mode, chainId }
-    }
-
-    // Paymaster paths: skip AK's estimation, let the paymaster adapter drive it.
     const baseUserOp = await smartAccount.createUserOperation(
       calls,
       providerRpc,
-      undefined,
-      { callGasLimit: 0n, verificationGasLimit: 0n, preVerificationGas: 0n }
+      config.bundlerUrl,
+      gasPrice
     )
 
-    // AK's createUserOperation only sets a dummy signature when it runs its
-    // internal estimation (which we skipped). The paymaster adapters later
-    // need a parseable Safe 4337 signature for bundler simulation; fill one in.
-    if (!baseUserOp.signature || baseUserOp.signature.length < 3) {
-      baseUserOp.signature = DUMMY_SAFE_4337_SIGNATURE
+    if (mode === PaymasterMode.NATIVE) {
+      return { userOp: baseUserOp, smartAccount, mode, chainId }
     }
 
     const userOp = await applyPaymasterToUserOp({
-      provider,
       mode,
       smartAccount,
       userOp: baseUserOp,
       config,
-      chainId,
-      gasBufferPercent
+      chainId
     })
 
-    return { userOp, smartAccount, provider, mode, chainId }
+    return { userOp, smartAccount, mode, chainId }
   }
 
   /** @private */
-  async _getUserOperationGasCost (txs, { amountToApprove, ...config }) {
-    const mode = resolvePaymasterMode(config)
-    const provider = mode === PaymasterMode.NATIVE ? null : resolvePaymasterProvider(config)
-
+  async _getUserOperationGasCost (txs, config) {
     const calls = txs.map(tx => ({
       to: tx.to,
       value: tx.value !== undefined ? BigInt(tx.value) : 0n,
       data: tx.data || '0x'
     }))
 
-    // Pimlico token paymaster requires a manual approve prepended; Candide
-    // prepends it automatically inside createTokenPaymasterUserOperation.
-    const needsManualApprove = mode === PaymasterMode.TOKEN &&
-      provider === PaymasterProvider.PIMLICO &&
-      amountToApprove && amountToApprove > 0n
-
-    if (needsManualApprove) {
-      calls.unshift(...buildApproveCalls(
-        config.paymasterToken.address,
-        config.paymasterAddress,
-        amountToApprove
-      ))
-    }
-
     try {
-      const { userOp, smartAccount } = await this._buildUserOperation(calls, config)
+      const { userOp } = await this._buildUserOperation(calls, config)
+
+      const gasCostWei = calculateUserOperationMaxGasCost(userOp)
+      const mode = resolvePaymasterMode(config)
 
       if (mode !== PaymasterMode.TOKEN) {
-        return calculateUserOperationMaxGasCost(userOp)
+        return gasCostWei
       }
 
-      if (provider === PaymasterProvider.CANDIDE) {
-        const { CandidePaymaster } = await import('abstractionkit')
-        const paymaster = new CandidePaymaster(config.paymasterUrl)
-        return await paymaster.calculateUserOperationErc20TokenMaxGasCost(
-          smartAccount,
-          userOp,
-          config.paymasterToken.address,
-          { entrypoint: config.entryPointAddress }
+      // For token paymasters, convert wei cost to token amount using the
+      // exchange rate. Erc7677Paymaster handles approval internally, but
+      // we still need to quote the fee in the paymaster token's units.
+      const erc7677 = new Erc7677Paymaster(config.paymasterUrl, { chainId: await this._getChainId() })
+      const chainIdHex = `0x${(await this._getChainId()).toString(16)}`
+      const entrypoint = config.entryPointAddress
+
+      // Use sendRPCRequest to fetch the exchange rate via the provider's
+      // native method. Erc7677Paymaster auto-detects the provider.
+      let exchangeRate
+      if (Erc7677Paymaster.detectProvider(config.paymasterUrl) === 'pimlico') {
+        const result = await erc7677.sendRPCRequest('pimlico_getTokenQuotes', [
+          { tokens: [config.paymasterToken.address] },
+          entrypoint,
+          chainIdHex
+        ])
+        exchangeRate = BigInt(result?.quotes?.[0]?.exchangeRate)
+      } else {
+        const result = await erc7677.sendRPCRequest('pm_supportedERC20Tokens', [entrypoint])
+        const token = result?.tokens?.find(
+          t => t.address.toLowerCase() === config.paymasterToken.address.toLowerCase()
         )
+        exchangeRate = BigInt(token?.exchangeRate)
       }
 
-      const gasCost = calculateUserOperationMaxGasCost(userOp)
-      const exchangeRate = await getTokenExchangeRate({
-        provider,
-        tokenAddress: config.paymasterToken.address,
-        paymasterUrl: config.paymasterUrl,
-        entryPointAddress: config.entryPointAddress,
-        chainId: await this._getChainId()
-      })
-
-      return (gasCost * exchangeRate + (10n ** 18n - 1n)) / (10n ** 18n)
+      return (gasCostWei * exchangeRate + (10n ** 18n - 1n)) / (10n ** 18n)
     } catch (error) {
       if (error.message?.includes('AA50')) {
         throw new Error('Simulation failed: not enough funds in the safe account to repay the paymaster.')
@@ -672,13 +628,4 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       throw error
     }
   }
-}
-
-/**
- * @param {string} [bundlerUrl]
- * @returns {boolean}
- */
-export function _needsGasBuffer (bundlerUrl) {
-  if (!bundlerUrl) return false
-  return BUNDLERS_NEEDING_GAS_BUFFER.some(name => bundlerUrl.includes(name))
 }

@@ -14,21 +14,14 @@
 
 'use strict'
 
-import { Contract } from 'ethers'
+import { Contract, getBytes, hexlify, zeroPadValue, toBeHex } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
 import { Bundler } from 'abstractionkit'
+import { secp256k1 } from '@noble/curves/secp256k1'
 
 import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-4337.js'
-import {
-  PaymasterMode,
-  PaymasterProvider,
-  buildApproveCalls,
-  resolvePaymasterMode,
-  resolvePaymasterProvider
-} from './paymaster.js'
-import { signUserOperationWithKeyBytes } from './signer.js'
 
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
@@ -175,17 +168,10 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       this._validateConfig(mergedConfig)
     }
 
-    const { isSponsored, useNativeCoins } = mergedConfig
-
     const fee = this._getValidCachedFee(tx) ?? (await this.quoteSendTransaction(tx, config)).fee
     this._lastQuote = undefined
 
-    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : fee
-
-    const hash = await this._sendUserOperation([tx].flat(), {
-      ...mergedConfig,
-      amountToApprove
-    })
+    const hash = await this._sendUserOperation([tx].flat(), mergedConfig)
 
     return { hash, fee }
   }
@@ -204,7 +190,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       this._validateConfig(mergedConfig)
     }
 
-    const { isSponsored, useNativeCoins, transferMaxFee } = mergedConfig
+    const { isSponsored, transferMaxFee } = mergedConfig
 
     const tx = await WalletAccountEvm._getTransferTransaction(options)
 
@@ -215,12 +201,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
 
-    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : fee
-
-    const hash = await this._sendUserOperation([tx], {
-      ...mergedConfig,
-      amountToApprove
-    })
+    const hash = await this._sendUserOperation([tx], mergedConfig)
 
     return { hash, fee }
   }
@@ -276,13 +257,10 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 
   /** @private */
-  async _sendUserOperation (txs, { amountToApprove, ...config }) {
+  async _sendUserOperation (txs, config) {
     if (this._disposed) {
       throw new Error('Private key has been disposed.')
     }
-
-    const mode = resolvePaymasterMode(config)
-    const provider = mode === PaymasterMode.NATIVE ? null : resolvePaymasterProvider(config)
 
     const calls = txs.map(tx => ({
       to: tx.to,
@@ -290,29 +268,22 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       data: tx.data || '0x'
     }))
 
-    const needsManualApprove = mode === PaymasterMode.TOKEN &&
-      provider === PaymasterProvider.PIMLICO &&
-      amountToApprove && amountToApprove > 0n
-
-    if (needsManualApprove) {
-      calls.unshift(...buildApproveCalls(
-        config.paymasterToken.address,
-        config.paymasterAddress,
-        amountToApprove
-      ))
-    }
-
     try {
       const { userOp, smartAccount, chainId } = await this._buildUserOperation(calls, config)
 
-      userOp.signature = signUserOperationWithKeyBytes({
+      // Sign using AK's capability-oriented signer API. The private key
+      // stays as a Uint8Array throughout — never stringified — so dispose()
+      // can zero the buffer.
+      const keyPair = this._ownerAccount.keyPair
+      const signer = {
+        address: this._ownerAccountAddress,
+        signHash: async (hash) => _signHashWithBytes(hash, keyPair.privateKey)
+      }
+      userOp.signature = await smartAccount.signUserOperationWithSigners(
         userOp,
-        privateKeyBytes: this._ownerAccount.keyPair.privateKey,
-        ownerAddress: this._ownerAccountAddress,
-        chainId,
-        entrypointAddress: smartAccount.entrypointAddress,
-        safe4337ModuleAddress: smartAccount.safe4337ModuleAddress
-      })
+        [signer],
+        chainId
+      )
 
       const bundler = new Bundler(config.bundlerUrl)
       return await bundler.sendUserOperation(userOp, smartAccount.entrypointAddress)
@@ -323,4 +294,28 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       throw err
     }
   }
+}
+
+/**
+ * Signs a hash using a Uint8Array private key via @noble/curves secp256k1.
+ * Returns a 65-byte hex signature (r ‖ s ‖ v). The private key never
+ * touches a string representation.
+ *
+ * @param {string} hashHex - The hash to sign (0x-prefixed hex string).
+ * @param {Uint8Array} privateKeyBytes - The 32-byte private key.
+ * @returns {string} The serialized signature as a hex string.
+ */
+function _signHashWithBytes (hashHex, privateKeyBytes) {
+  if (!privateKeyBytes) {
+    throw new Error('Private key has been disposed.')
+  }
+  const hashBytes = getBytes(hashHex)
+  const { r, s, recovery } = secp256k1.sign(hashBytes, privateKeyBytes, {
+    lowS: true,
+    extraEntropy: false
+  })
+  const rHex = zeroPadValue(toBeHex(r), 32)
+  const sHex = zeroPadValue(toBeHex(s), 32)
+  const v = recovery === 1 ? '1c' : '1b'
+  return hexlify(rHex) + sHex.slice(2) + v
 }

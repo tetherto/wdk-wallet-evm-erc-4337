@@ -121,8 +121,7 @@ export const SALT_NONCE = '0x69b348339eea4ed93f9d11931c3b894c8f9d8c7663a053024b1
 const SAFE_MODULES_MAP = {
   '0.3.0': {
     safe4337ModuleAddress: '0x75cf11467937ce3F2f357CE24ffc3DBF8fD5c226',
-    safeModuleSetupAddress: '0x2dd68b007B46fBe91B9A7c3EDa5A7a1063cB5b47',
-    entryPointVersion: '0.7'
+    safeModuleSetupAddress: '0x2dd68b007B46fBe91B9A7c3EDa5A7a1063cB5b47'
   }
 }
 
@@ -417,13 +416,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     const safeAddress = await this.getAddress()
 
     if (await this._isAccountDeployed(safeAddress)) {
-      return new SafeAccount030(safeAddress, {
-        entrypointAddress: overrides.entrypointAddress,
-        safe4337ModuleAddress: overrides.safe4337ModuleAddress,
-        onChainIdentifierParams: overrides.onChainIdentifierParams,
-        onChainIdentifier: overrides.onChainIdentifier,
-        safeAccountSingleton: overrides.safeAccountSingleton
-      })
+      return new SafeAccount030(safeAddress, overrides)
     }
 
     return SafeAccount030.initializeNewAccount([this._ownerAccountAddress], overrides)
@@ -439,7 +432,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   async _isAccountDeployed (address) {
     const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
     const code = await evmReadOnlyAccount._provider.getCode(address)
-    return typeof code === 'string' && code !== '0x' && code !== '0x0'
+    return code !== '0x' && code !== '0x0'
   }
 
   /**
@@ -609,8 +602,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       // For token paymasters, convert wei cost to token amount using the
       // exchange rate. Erc7677Paymaster handles approval internally, but
       // we still need to quote the fee in the paymaster token's units.
-      const erc7677 = new Erc7677Paymaster(config.paymasterUrl, { chainId: await this._getChainId() })
-      const chainIdHex = `0x${(await this._getChainId()).toString(16)}`
+      const chainId = await this._getChainId()
+      const erc7677 = new Erc7677Paymaster(config.paymasterUrl, { chainId })
+      const chainIdHex = `0x${chainId.toString(16)}`
       const entrypoint = config.entryPointAddress
 
       // Use sendRPCRequest to fetch the exchange rate via the provider's

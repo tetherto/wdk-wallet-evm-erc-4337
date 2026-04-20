@@ -18,8 +18,6 @@ import { Contract, SigningKey } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
-import { Bundler } from 'abstractionkit'
-
 import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-4337.js'
 
 /** @typedef {import('@tetherto/wdk-wallet').IWalletAccount} IWalletAccount */
@@ -271,8 +269,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
         chainId
       )
 
-      const bundler = new Bundler(config.bundlerUrl)
-      return await bundler.sendUserOperation(userOp, smartAccount.entrypointAddress)
+      return await this._getBundler().sendUserOperation(userOp, smartAccount.entrypointAddress)
     } catch (err) {
       if (err.message?.includes('AA50')) {
         throw new Error('Not enough funds on the safe account to repay the paymaster.')

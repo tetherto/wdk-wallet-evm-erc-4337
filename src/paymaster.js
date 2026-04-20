@@ -73,9 +73,7 @@ export function resolvePaymasterMode (config) {
  * @returns {Promise<BundlerGasPrice | undefined>}
  */
 export async function fetchBundlerGasPrice (bundlerUrl) {
-  if (bundlerUrl === undefined || Erc7677Paymaster.detectProvider(bundlerUrl) !== 'pimlico') {
-    return undefined
-  }
+  if (Erc7677Paymaster.detectProvider(bundlerUrl) !== 'pimlico') return undefined
 
   const erc7677 = new Erc7677Paymaster(bundlerUrl)
   const result = await erc7677.sendRPCRequest('pimlico_getUserOperationGasPrice', [])

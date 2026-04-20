@@ -50,12 +50,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      */
     signTypedData({ domain, types, message }: TypedData): Promise<string>;
     /**
-     * Signs a transaction without broadcasting.
+     * Signs a user operation built from the given transaction.
      *
-     * @param {EvmTransaction} tx - The transaction to sign.
-     * @returns {Promise<string>} The signed transaction as a hex string.
+     * @param {EvmTransaction} tx - The transaction to include in the user operation.
+     * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
+     * @returns {Promise<SafeOperation>} The signed safe operation.
      */
-    signTransaction(tx: EvmTransaction): Promise<string>;
+    signTransaction(tx: EvmTransaction, config?: Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>): Promise<SafeOperation>;
     /**
      * Approves a specific amount of tokens to a spender.
      *
@@ -109,6 +110,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      */
     private _getValidCachedFee;
     /** @private */
+    private _buildSignedUserOperation;
+    /** @private */
     private _sendUserOperation;
 }
 export type Eip1193Provider = import("ethers").Eip1193Provider;
@@ -124,5 +127,6 @@ export type EvmErc4337WalletConfig = import("./wallet-account-read-only-evm-erc-
 export type EvmErc4337WalletPaymasterTokenConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletPaymasterTokenConfig;
 export type EvmErc4337WalletSponsorshipPolicyConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletSponsorshipPolicyConfig;
 export type EvmErc4337WalletNativeCoinsConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletNativeCoinsConfig;
+export type SafeOperation = import("@safe-global/types-kit").SafeOperation;
 import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-4337.js';
 import { Safe4337Pack } from '@tetherto/wdk-safe-relay-kit';

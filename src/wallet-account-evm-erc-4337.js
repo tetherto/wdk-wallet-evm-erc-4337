@@ -14,12 +14,11 @@
 
 'use strict'
 
-import { Contract, getBytes, hexlify, zeroPadValue, toBeHex } from 'ethers'
+import { Contract, SigningKey } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
 import { Bundler } from 'abstractionkit'
-import { secp256k1 } from '@noble/curves/secp256k1'
 
 import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-4337.js'
 
@@ -258,13 +257,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     try {
       const { userOp, smartAccount, chainId } = await this._buildUserOperation(calls, config)
 
-      // Sign using AK's capability-oriented signer API. The private key
-      // stays as a Uint8Array throughout — never stringified — so dispose()
-      // can zero the buffer.
-      const keyPair = this._ownerAccount.keyPair
+      // Sign using AK's capability-oriented signer API. SigningKey accepts
+      // Uint8Array directly — the private key is never stringified — so
+      // dispose() can zero the buffer.
+      const signingKey = new SigningKey(this._ownerAccount.keyPair.privateKey)
       const signer = {
         address: this._ownerAccountAddress,
-        signHash: async (hash) => _signHashWithBytes(hash, keyPair.privateKey)
+        signHash: async (hash) => signingKey.sign(hash).serialized
       }
       userOp.signature = await smartAccount.signUserOperationWithSigners(
         userOp,
@@ -281,20 +280,4 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       throw err
     }
   }
-}
-
-/** @private */
-function _signHashWithBytes (hashHex, privateKeyBytes) {
-  if (!privateKeyBytes) {
-    throw new Error('Private key has been disposed.')
-  }
-  const hashBytes = getBytes(hashHex)
-  const { r, s, recovery } = secp256k1.sign(hashBytes, privateKeyBytes, {
-    lowS: true,
-    extraEntropy: false
-  })
-  const rHex = zeroPadValue(toBeHex(r), 32)
-  const sHex = zeroPadValue(toBeHex(s), 32)
-  const v = recovery === 1 ? '1c' : '1b'
-  return hexlify(rHex) + sHex.slice(2) + v
 }

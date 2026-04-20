@@ -611,13 +611,20 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
           entrypoint,
           chainIdHex
         ])
-        exchangeRate = BigInt(result?.quotes?.[0]?.exchangeRate)
+        const rate = result?.quotes?.[0]?.exchangeRate
+        if (rate === undefined) {
+          throw new Error(`Token ${config.paymasterToken.address} is not supported by the paymaster.`)
+        }
+        exchangeRate = BigInt(rate)
       } else {
         const result = await erc7677.sendRPCRequest('pm_supportedERC20Tokens', [entrypoint])
         const token = result?.tokens?.find(
           t => t.address.toLowerCase() === config.paymasterToken.address.toLowerCase()
         )
-        exchangeRate = BigInt(token?.exchangeRate)
+        if (token?.exchangeRate === undefined) {
+          throw new Error(`Token ${config.paymasterToken.address} is not supported by the paymaster.`)
+        }
+        exchangeRate = BigInt(token.exchangeRate)
       }
 
       return (gasCostWei * exchangeRate + (10n ** 18n - 1n)) / (10n ** 18n)

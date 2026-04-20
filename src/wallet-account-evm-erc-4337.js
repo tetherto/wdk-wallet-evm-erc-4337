@@ -39,6 +39,7 @@ import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletNativeCoinsConfig} EvmErc4337WalletNativeCoinsConfig */
 
 /** @typedef {import('@tetherto/wdk-safe-relay-kit').Safe4337Pack} Safe4337Pack */
+/** @typedef {import('@safe-global/types-kit').SafeOperation} SafeOperation */
 
 const QUOTE_MAX_AGE_MS = 2 * 60 * 1_000
 
@@ -115,6 +116,35 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    */
   async signTypedData ({ domain, types, message }) {
     return await this._ownerAccount.signTypedData({ domain, types, message })
+  }
+
+  /**
+   * Signs a user operation built from the given transaction.
+   *
+   * @param {EvmTransaction} tx - The transaction to include in the user operation.
+   * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
+   * @returns {Promise<SafeOperation>} The signed safe operation.
+   */
+  async signTransaction (tx, config) {
+    const mergedConfig = { ...this._config, ...config }
+
+    if (config) {
+      this._validateConfig(mergedConfig)
+    }
+
+    const { isSponsored, useNativeCoins } = mergedConfig
+
+    const fee = this._getValidCachedFee(tx) ?? (await this.quoteSendTransaction(tx, config)).fee
+    this._lastQuote = undefined
+
+    const amountToApprove = (isSponsored || useNativeCoins) ? 0n : fee
+
+    const { signedSafeOperation } = await this._buildSignedUserOperation([tx], {
+      ...mergedConfig,
+      amountToApprove
+    })
+
+    return signedSafeOperation
   }
 
   /**
@@ -287,7 +317,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 
   /** @private */
-  async _sendUserOperation (txs, { amountToApprove, ...config }) {
+  async _buildSignedUserOperation (txs, { amountToApprove, ...config }) {
     const { useNativeCoins, paymasterToken, isSponsored, sponsorshipPolicyId } = config
 
     const safe4337Pack = await this._getSafe4337Pack(config)
@@ -303,17 +333,24 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       sponsorshipPolicyId: isSponsored ? sponsorshipPolicyId : undefined
     }
 
-    try {
-      const safeOperation = await safe4337Pack.createTransaction({
-        transactions: txs.map(tx => ({ from: address, ...tx })),
-        options: {
-          validUntil: twoMinutesFromNow,
-          feeEstimator: await this._getFeeEstimator(),
-          ...options
-        }
-      })
+    const safeOperation = await safe4337Pack.createTransaction({
+      transactions: txs.map(tx => ({ from: address, ...tx })),
+      options: {
+        validUntil: twoMinutesFromNow,
+        feeEstimator: await this._getFeeEstimator(),
+        ...options
+      }
+    })
 
-      const signedSafeOperation = await safe4337Pack.signSafeOperation(safeOperation)
+    const signedSafeOperation = await safe4337Pack.signSafeOperation(safeOperation)
+
+    return { safe4337Pack, signedSafeOperation }
+  }
+
+  /** @private */
+  async _sendUserOperation (txs, config) {
+    try {
+      const { safe4337Pack, signedSafeOperation } = await this._buildSignedUserOperation(txs, config)
 
       return await safe4337Pack.executeTransaction({
         executable: signedSafeOperation

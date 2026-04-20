@@ -59,12 +59,18 @@ export function resolvePaymasterMode (config) {
 }
 
 /**
+ * @typedef {Object} BundlerGasPrice
+ * @property {bigint} maxFeePerGas - The maximum fee per gas unit.
+ * @property {bigint} maxPriorityFeePerGas - The maximum priority fee per gas unit.
+ */
+
+/**
  * Fetches bundler-specific gas prices when the bundler requires them.
  * Currently only Pimlico requires this (pimlico_getUserOperationGasPrice).
  * Other bundlers (Candide, etc.) work with standard node RPC gas prices.
  *
- * @param {string} bundlerUrl
- * @returns {Promise<{maxFeePerGas: bigint, maxPriorityFeePerGas: bigint} | undefined>}
+ * @param {string} bundlerUrl - The bundler RPC URL.
+ * @returns {Promise<BundlerGasPrice | undefined>}
  */
 export async function fetchBundlerGasPrice (bundlerUrl) {
   if (!bundlerUrl || !bundlerUrl.includes('pimlico')) return undefined

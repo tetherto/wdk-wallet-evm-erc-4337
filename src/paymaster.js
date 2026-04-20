@@ -26,13 +26,13 @@ export const PaymasterMode = Object.freeze({
  * specific gas prices (e.g. Pimlico), pass them as overrides to
  * createUserOperation before calling this function.
  *
- * @param {object} args
+ * @param {Object} args
  * @param {string} args.mode - PaymasterMode value.
- * @param {object} args.smartAccount - AbstractionKit SafeAccountV0_3_0 instance.
- * @param {object} args.userOp - The fully-estimated user operation.
- * @param {object} args.config - The wallet configuration.
+ * @param {Object} args.smartAccount - AbstractionKit SafeAccountV0_3_0 instance.
+ * @param {Object} args.userOp - The fully-estimated user operation.
+ * @param {Object} args.config - The wallet configuration.
  * @param {bigint} args.chainId - The chain id.
- * @returns {Promise<object>} The user operation with paymaster fields populated.
+ * @returns {Promise<Object>} The user operation with paymaster fields populated.
  */
 export async function applyPaymasterToUserOp ({ mode, smartAccount, userOp, config, chainId }) {
   if (mode === PaymasterMode.NATIVE) return userOp

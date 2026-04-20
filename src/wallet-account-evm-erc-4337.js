@@ -23,8 +23,6 @@ import { secp256k1 } from '@noble/curves/secp256k1'
 
 import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-4337.js'
 
-/** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
-
 /** @typedef {import('@tetherto/wdk-wallet').IWalletAccount} IWalletAccount */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').KeyPair} KeyPair */

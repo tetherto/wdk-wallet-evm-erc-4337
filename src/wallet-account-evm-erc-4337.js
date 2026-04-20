@@ -227,14 +227,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     this._disposed = true
   }
 
-  /**
-   * Returns the cached fee if it exists, is not expired, and matches the given transaction.
-   * Clears cache on match or expiry; preserves it on mismatch.
-   *
-   * @private
-   * @param {EvmTransaction | EvmTransaction[]} tx - The transaction to match against.
-   * @returns {bigint | undefined} The cached fee, or undefined if not available, expired, or mismatched.
-   */
+  /** @private */
   _getValidCachedFee (tx) {
     const quote = this._lastQuote
 
@@ -296,15 +289,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 }
 
-/**
- * Signs a hash using a Uint8Array private key via @noble/curves secp256k1.
- * Returns a 65-byte hex signature (r ‖ s ‖ v). The private key never
- * touches a string representation.
- *
- * @param {string} hashHex - The hash to sign (0x-prefixed hex string).
- * @param {Uint8Array} privateKeyBytes - The 32-byte private key.
- * @returns {string} The serialized signature as a hex string.
- */
+/** @private */
 function _signHashWithBytes (hashHex, privateKeyBytes) {
   if (!privateKeyBytes) {
     throw new Error('Private key has been disposed.')

@@ -23,17 +23,17 @@ import {
   SafeAccountV0_3_0 as SafeAccount030,
   Bundler,
   Erc7677Paymaster,
+  EOADummySignerSignaturePair,
   calculateUserOperationMaxGasCost
 } from 'abstractionkit'
 
-import {
-  PaymasterMode,
-  applyPaymasterToUserOp,
-  fetchBundlerGasPrice,
-  resolvePaymasterMode
-} from './paymaster.js'
-
 import { ConfigurationError } from './errors.js'
+
+const PaymasterMode = Object.freeze({
+  NATIVE: 'native',
+  SPONSORED: 'sponsored',
+  TOKEN: 'token'
+})
 
 const FEE_TOLERANCE_COEFFICIENT = 120n
 
@@ -538,12 +538,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Builds a UserOperation via AbstractionKit with paymaster fields applied.
    * Shared by gas quoting (read-only) and sending (full-access).
    *
-   * - Native (no paymaster): delegates to AK's built-in estimation.
-   * - Candide paymaster: runs AK's full estimation via the Candide bundler,
-   * All paymaster flows use the same pipeline:
-   *   1. Fetch bundler-specific gas prices if needed (e.g. Pimlico).
-   *   2. Full AK estimation via createUserOperation with the bundler.
-   *   3. Erc7677Paymaster applies paymaster fields with re-estimation.
+   * - Native: full AK estimation via the bundler.
+   * - Candide paymaster: full AK estimation first (their bundler requires
+   *   gas headroom from double-estimation), then Erc7677Paymaster.
+   * - Pimlico / other ERC-7677: skip initial estimation (bundlers reject
+   *   prefund check without paymaster), let Erc7677Paymaster drive
+   *   estimation with paymaster attached.
    *
    * @protected
    * @param {object[]} calls
@@ -554,32 +554,41 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     const smartAccount = await this._getSmartAccount(config)
     const chainId = await this._getChainId()
 
-    const mode = resolvePaymasterMode(config)
+    const mode = WalletAccountReadOnlyEvmErc4337._resolvePaymasterMode(config)
     const providerRpc = typeof config.provider === 'string' ? config.provider : undefined
+    const provider = mode !== PaymasterMode.NATIVE
+      ? WalletAccountReadOnlyEvmErc4337._detectProvider(config.paymasterUrl)
+      : null
 
-    // Fetch bundler-specific gas prices when needed (e.g. Pimlico requires
-    // higher fees than the node RPC reports). Passed as overrides so AK
-    // skips its node gas-price fetch. Needed for all modes — native UserOps
-    // are also submitted through the bundler.
-    const gasPrice = await fetchBundlerGasPrice(config.bundlerUrl)
+    if (mode === PaymasterMode.NATIVE || provider === 'candide') {
+      const gasPrice = await WalletAccountReadOnlyEvmErc4337._fetchBundlerGasPrice(config.bundlerUrl)
+      const baseUserOp = await smartAccount.createUserOperation(
+        calls,
+        providerRpc,
+        config.bundlerUrl,
+        gasPrice
+      )
 
+      if (mode === PaymasterMode.NATIVE) {
+        return { userOp: baseUserOp, smartAccount, mode, chainId }
+      }
+
+      const userOp = await WalletAccountReadOnlyEvmErc4337._applyPaymasterToUserOp({
+        mode, smartAccount, userOp: baseUserOp, config, chainId
+      })
+      return { userOp, smartAccount, mode, chainId }
+    }
+
+    const gasPrice = await WalletAccountReadOnlyEvmErc4337._fetchBundlerGasPrice(config.bundlerUrl)
     const baseUserOp = await smartAccount.createUserOperation(
       calls,
       providerRpc,
-      config.bundlerUrl,
-      gasPrice
+      undefined,
+      { callGasLimit: 0n, verificationGasLimit: 0n, preVerificationGas: 0n, ...gasPrice }
     )
 
-    if (mode === PaymasterMode.NATIVE) {
-      return { userOp: baseUserOp, smartAccount, mode, chainId }
-    }
-
-    const userOp = await applyPaymasterToUserOp({
-      mode,
-      smartAccount,
-      userOp: baseUserOp,
-      config,
-      chainId
+    const userOp = await WalletAccountReadOnlyEvmErc4337._applyPaymasterToUserOp({
+      mode, smartAccount, userOp: baseUserOp, config, chainId
     })
 
     return { userOp, smartAccount, mode, chainId }
@@ -593,24 +602,19 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       const { userOp } = await this._buildUserOperation(calls, config)
 
       const gasCostWei = calculateUserOperationMaxGasCost(userOp)
-      const mode = resolvePaymasterMode(config)
+      const mode = WalletAccountReadOnlyEvmErc4337._resolvePaymasterMode(config)
 
       if (mode !== PaymasterMode.TOKEN) {
         return gasCostWei
       }
 
-      // For token paymasters, convert wei cost to token amount using the
-      // exchange rate. Erc7677Paymaster handles approval internally, but
-      // we still need to quote the fee in the paymaster token's units.
       const chainId = await this._getChainId()
       const erc7677 = new Erc7677Paymaster(config.paymasterUrl, { chainId })
       const chainIdHex = `0x${chainId.toString(16)}`
       const entrypoint = config.entryPointAddress
 
-      // Use sendRPCRequest to fetch the exchange rate via the provider's
-      // native method. Erc7677Paymaster auto-detects the provider.
       let exchangeRate
-      if (Erc7677Paymaster.detectProvider(config.paymasterUrl) === 'pimlico') {
+      if (WalletAccountReadOnlyEvmErc4337._detectProvider(config.paymasterUrl) === 'pimlico') {
         const result = await erc7677.sendRPCRequest('pimlico_getTokenQuotes', [
           { tokens: [config.paymasterToken.address] },
           entrypoint,
@@ -639,5 +643,58 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       }
       throw error
     }
+  }
+
+  /** @private */
+  static _resolvePaymasterMode (config) {
+    if (config.useNativeCoins) return PaymasterMode.NATIVE
+    if (config.isSponsored) return PaymasterMode.SPONSORED
+    return PaymasterMode.TOKEN
+  }
+
+  /** @private */
+  static async _fetchBundlerGasPrice (bundlerUrl) {
+    if (WalletAccountReadOnlyEvmErc4337._detectProvider(bundlerUrl) !== 'pimlico') return undefined
+
+    const erc7677 = new Erc7677Paymaster(bundlerUrl)
+    const result = await erc7677.sendRPCRequest('pimlico_getUserOperationGasPrice', [])
+    if (!result?.fast) return undefined
+
+    return {
+      maxFeePerGas: BigInt(result.fast.maxFeePerGas),
+      maxPriorityFeePerGas: BigInt(result.fast.maxPriorityFeePerGas)
+    }
+  }
+
+  /** @private */
+  static _detectProvider (url) {
+    return Erc7677Paymaster.detectProvider(url) ||
+      (url?.includes('pimlico') ? 'pimlico' : url?.includes('candide') ? 'candide' : null)
+  }
+
+  /** @private */
+  static async _applyPaymasterToUserOp ({ mode, smartAccount, userOp, config, chainId }) {
+    if (mode === PaymasterMode.NATIVE) return userOp
+
+    if (!userOp.signature || userOp.signature.length < 3) {
+      userOp.signature = SafeAccount030.formatSignaturesToUseroperationSignature(
+        [EOADummySignerSignaturePair], {}
+      )
+    }
+
+    const provider = WalletAccountReadOnlyEvmErc4337._detectProvider(config.paymasterUrl)
+    const erc7677 = new Erc7677Paymaster(config.paymasterUrl, { chainId: BigInt(chainId), provider })
+
+    const context = mode === PaymasterMode.TOKEN
+      ? { token: config.paymasterToken.address }
+      : (config.sponsorshipPolicyId ? { sponsorshipPolicyId: config.sponsorshipPolicyId } : {})
+
+    return await erc7677.createPaymasterUserOperation(
+      smartAccount,
+      userOp,
+      config.bundlerUrl,
+      context,
+      { entrypoint: config.entryPointAddress }
+    )
   }
 }

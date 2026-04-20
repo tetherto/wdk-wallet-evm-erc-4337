@@ -255,9 +255,6 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     try {
       const { userOp, smartAccount, chainId } = await this._buildUserOperation(calls, config)
 
-      // Sign using AK's capability-oriented signer API. SigningKey accepts
-      // Uint8Array directly — the private key is never stringified — so
-      // dispose() can zero the buffer.
       const signingKey = new SigningKey(this._ownerAccount.keyPair.privateKey)
       const signer = {
         address: this._ownerAccountAddress,

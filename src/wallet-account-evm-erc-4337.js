@@ -253,11 +253,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       throw new Error('Private key has been disposed.')
     }
 
-    const calls = txs.map(tx => ({
-      to: tx.to,
-      value: tx.value !== undefined ? BigInt(tx.value) : 0n,
-      data: tx.data || '0x'
-    }))
+    const calls = WalletAccountReadOnlyEvmErc4337._toCalls(txs)
 
     try {
       const { userOp, smartAccount, chainId } = await this._buildUserOperation(calls, config)

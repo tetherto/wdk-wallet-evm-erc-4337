@@ -494,6 +494,21 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
+   * Converts EVM transactions to AbstractionKit MetaTransaction calls.
+   *
+   * @protected
+   * @param {EvmTransaction[]} txs - The transactions to convert.
+   * @returns {Object[]} The calls array for createUserOperation.
+   */
+  static _toCalls (txs) {
+    return txs.map(tx => ({
+      to: tx.to,
+      value: tx.value !== undefined ? BigInt(tx.value) : 0n,
+      data: tx.data ?? '0x'
+    }))
+  }
+
+  /**
    * Builds AbstractionKit InitCodeOverrides from the wallet configuration.
    *
    * @protected
@@ -579,11 +594,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
   /** @private */
   async _getUserOperationGasCost (txs, config) {
-    const calls = txs.map(tx => ({
-      to: tx.to,
-      value: tx.value !== undefined ? BigInt(tx.value) : 0n,
-      data: tx.data || '0x'
-    }))
+    const calls = WalletAccountReadOnlyEvmErc4337._toCalls(txs)
 
     try {
       const { userOp } = await this._buildUserOperation(calls, config)

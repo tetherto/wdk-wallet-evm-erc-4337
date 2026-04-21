@@ -19,3 +19,4 @@ export type EvmErc4337WalletCommonConfig = import("./src/wallet-account-read-onl
 export type EvmErc4337WalletPaymasterTokenConfig = import("./src/wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletPaymasterTokenConfig;
 export type EvmErc4337WalletSponsorshipPolicyConfig = import("./src/wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletSponsorshipPolicyConfig;
 export type EvmErc4337WalletNativeCoinsConfig = import("./src/wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletNativeCoinsConfig;
+export type OnchainIdentifier = import("./src/wallet-account-read-only-evm-erc-4337.js").OnchainIdentifier;

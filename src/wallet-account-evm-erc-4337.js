@@ -14,9 +14,10 @@
 
 'use strict'
 
-import { Contract, SigningKey } from 'ethers'
+import { Contract, getBytes, hexlify, zeroPadValue, toBeHex } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
+import { secp256k1 } from '@noble/curves/secp256k1'
 
 import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-4337.js'
 
@@ -255,10 +256,17 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     try {
       const { userOp, smartAccount, chainId } = await this._buildUserOperation(calls, config)
 
-      const signingKey = new SigningKey(this._ownerAccount.keyPair.privateKey)
+      const privateKeyBytes = this._ownerAccount.keyPair.privateKey
       const signer = {
         address: this._ownerAccountAddress,
-        signHash: async (hash) => signingKey.sign(hash).serialized
+        signHash: async (hash) => {
+          const { r, s, recovery } = secp256k1.sign(
+            getBytes(hash), privateKeyBytes, { lowS: true, extraEntropy: false }
+          )
+          const rHex = zeroPadValue(toBeHex(r), 32)
+          const sHex = zeroPadValue(toBeHex(s), 32)
+          return hexlify(rHex) + sHex.slice(2) + (recovery === 1 ? '1c' : '1b')
+        }
       }
       userOp.signature = await smartAccount.signUserOperationWithSigners(
         userOp,

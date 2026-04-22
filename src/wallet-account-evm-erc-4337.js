@@ -164,10 +164,16 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       this._validateConfig(mergedConfig)
     }
 
-    const fee = this._getValidCachedFee(tx) ?? (await this.quoteSendTransaction(tx, config)).fee
+    let cached = this._consumeCachedQuote(tx)
+    if (!cached) {
+      await this.quoteSendTransaction(tx, config)
+      cached = this._consumeCachedQuote(tx)
+    }
+
+    const fee = cached?.fee ?? 0n
     this._lastQuote = undefined
 
-    const hash = await this._sendUserOperation([tx].flat(), mergedConfig)
+    const hash = await this._sendUserOperation([tx].flat(), mergedConfig, cached)
 
     return { hash, fee }
   }
@@ -190,14 +196,20 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     const tx = await WalletAccountEvm._getTransferTransaction(options)
 
-    const fee = this._getValidCachedFee(tx) ?? (await this.quoteSendTransaction(tx, config)).fee
+    let cached = this._consumeCachedQuote(tx)
+    if (!cached) {
+      await this.quoteSendTransaction(tx, config)
+      cached = this._consumeCachedQuote(tx)
+    }
+
+    const fee = cached?.fee ?? 0n
     this._lastQuote = undefined
 
     if (!isSponsored && transferMaxFee !== undefined && fee >= transferMaxFee) {
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
 
-    const hash = await this._sendUserOperation([tx], mergedConfig)
+    const hash = await this._sendUserOperation([tx], mergedConfig, cached)
 
     return { hash, fee }
   }
@@ -224,7 +236,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 
   /** @private */
-  _getValidCachedFee (tx) {
+  _consumeCachedQuote (tx) {
     const quote = this._lastQuote
 
     if (!quote) {
@@ -242,19 +254,19 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     this._lastQuote = undefined
 
-    return quote.fee
+    return quote
   }
 
   /** @private */
-  async _sendUserOperation (txs, config) {
+  async _sendUserOperation (txs, config, cachedBuild) {
     if (this._disposed) {
       throw new Error('Private key has been disposed.')
     }
 
-    const calls = WalletAccountReadOnlyEvmErc4337._toCalls(txs)
-
     try {
-      const { userOp, smartAccount, chainId } = await this._buildUserOperation(calls, config)
+      const { userOp, smartAccount, chainId } = cachedBuild?.userOp
+        ? cachedBuild
+        : await this._buildUserOperation(WalletAccountReadOnlyEvmErc4337._toCalls(txs), config)
 
       const privateKeyBytes = this._ownerAccount.keyPair.privateKey
       const signer = {

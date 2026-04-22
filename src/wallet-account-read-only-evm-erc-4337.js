@@ -66,6 +66,8 @@ const FEE_TOLERANCE_COEFFICIENT = 120n
  * @property {bigint} fee - The estimated fee with tolerance buffer applied.
  * @property {number} createdAt - The timestamp when the quote was created.
  * @property {string} txKey - A serialized key of the transaction used for cache matching.
+ * @property {Object} [userOp] - The built UserOperation, reusable by sendTransaction.
+ * @property {Object} [smartAccount] - The smart account instance used to build the UserOperation.
  */
 
 /**
@@ -267,11 +269,18 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       return { fee: 0n }
     }
 
-    const estimatedFee = await this._getUserOperationGasCost([tx].flat(), mergedConfig)
+    const gasCostResult = await this._getUserOperationGasCost([tx].flat(), mergedConfig)
 
-    const fee = BigInt(estimatedFee) * FEE_TOLERANCE_COEFFICIENT / 100n
+    const fee = BigInt(gasCostResult.fee) * FEE_TOLERANCE_COEFFICIENT / 100n
 
-    this._lastQuote = { fee, createdAt: Date.now(), txKey: WalletAccountReadOnlyEvmErc4337._getTxKey(tx) }
+    this._lastQuote = {
+      fee,
+      createdAt: Date.now(),
+      txKey: WalletAccountReadOnlyEvmErc4337._getTxKey(tx),
+      userOp: gasCostResult.userOp,
+      smartAccount: gasCostResult.smartAccount,
+      chainId: gasCostResult.chainId
+    }
 
     return { fee }
   }
@@ -623,13 +632,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     const calls = WalletAccountReadOnlyEvmErc4337._toCalls(txs)
 
     try {
-      const { userOp } = await this._buildUserOperation(calls, config)
+      const buildResult = await this._buildUserOperation(calls, config)
+      const { userOp } = buildResult
 
       const gasCostWei = calculateUserOperationMaxGasCost(userOp)
       const mode = WalletAccountReadOnlyEvmErc4337._resolvePaymasterMode(config)
 
       if (mode !== PaymasterMode.TOKEN) {
-        return gasCostWei
+        return { fee: gasCostWei, ...buildResult }
       }
 
       const chainId = await this._getChainId()
@@ -660,7 +670,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
         exchangeRate = BigInt(token.exchangeRate)
       }
 
-      return (gasCostWei * exchangeRate + (10n ** 18n - 1n)) / (10n ** 18n)
+      const fee = (gasCostWei * exchangeRate + (10n ** 18n - 1n)) / (10n ** 18n)
+      return { fee, ...buildResult }
     } catch (error) {
       if (error.message?.includes('AA50')) {
         throw new Error('Simulation failed: not enough funds in the safe account to repay the paymaster.')

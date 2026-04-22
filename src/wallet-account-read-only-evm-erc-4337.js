@@ -169,6 +169,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     this._chainId = undefined
 
+    /**
+     * Cached Erc7677Paymaster instances keyed by URL.
+     *
+     * @protected
+     * @type {Map<string, Object>}
+     */
+    this._paymasters = new Map()
+
     /** @private */
     this._ownerAccountAddress = address
   }
@@ -430,9 +438,15 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<boolean>}
    */
   async _isAccountDeployed (address) {
+    if (this._deployed) return true
+
     const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
     const code = await evmReadOnlyAccount._provider.getCode(address)
-    return code !== '0x' && code !== '0x0'
+    const deployed = code !== '0x' && code !== '0x0'
+
+    if (deployed) this._deployed = true
+
+    return deployed
   }
 
   /**
@@ -446,6 +460,15 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       this._bundler = new Bundler(this._config.bundlerUrl)
     }
     return this._bundler
+  }
+
+  /** @private */
+  _getPaymaster (url, options = {}) {
+    if (!this._paymasters.has(url)) {
+      const provider = WalletAccountReadOnlyEvmErc4337._detectProvider(url)
+      this._paymasters.set(url, new Erc7677Paymaster(url, { ...options, provider }))
+    }
+    return this._paymasters.get(url)
   }
 
   /**
@@ -468,11 +491,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
   /** @private */
   async _getEvmReadOnlyAccount () {
-    const address = await this.getAddress()
+    if (!this._evmReadOnlyAccount) {
+      const address = await this.getAddress()
+      this._evmReadOnlyAccount = new WalletAccountReadOnlyEvm(address, this._config)
+    }
 
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(address, this._config)
-
-    return evmReadOnlyAccount
+    return this._evmReadOnlyAccount
   }
 
   /**
@@ -561,7 +585,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       : null
 
     if (mode === PaymasterMode.NATIVE || provider === 'candide') {
-      const gasPrice = await WalletAccountReadOnlyEvmErc4337._fetchBundlerGasPrice(config.bundlerUrl)
+      const gasPrice = await this._fetchBundlerGasPrice(config.bundlerUrl)
       const baseUserOp = await smartAccount.createUserOperation(
         calls,
         providerRpc,
@@ -573,13 +597,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
         return { userOp: baseUserOp, smartAccount, mode, chainId }
       }
 
-      const userOp = await WalletAccountReadOnlyEvmErc4337._applyPaymasterToUserOp({
+      const userOp = await this._applyPaymasterToUserOp({
         mode, smartAccount, userOp: baseUserOp, config, chainId
       })
       return { userOp, smartAccount, mode, chainId }
     }
 
-    const gasPrice = await WalletAccountReadOnlyEvmErc4337._fetchBundlerGasPrice(config.bundlerUrl)
+    const gasPrice = await this._fetchBundlerGasPrice(config.bundlerUrl)
     const baseUserOp = await smartAccount.createUserOperation(
       calls,
       providerRpc,
@@ -587,7 +611,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       { callGasLimit: 0n, verificationGasLimit: 0n, preVerificationGas: 0n, ...gasPrice }
     )
 
-    const userOp = await WalletAccountReadOnlyEvmErc4337._applyPaymasterToUserOp({
+    const userOp = await this._applyPaymasterToUserOp({
       mode, smartAccount, userOp: baseUserOp, config, chainId
     })
 
@@ -609,7 +633,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       }
 
       const chainId = await this._getChainId()
-      const erc7677 = new Erc7677Paymaster(config.paymasterUrl, { chainId })
+      const erc7677 = this._getPaymaster(config.paymasterUrl, { chainId })
       const chainIdHex = `0x${chainId.toString(16)}`
       const entrypoint = config.entryPointAddress
 
@@ -653,10 +677,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /** @private */
-  static async _fetchBundlerGasPrice (bundlerUrl) {
+  async _fetchBundlerGasPrice (bundlerUrl) {
     if (WalletAccountReadOnlyEvmErc4337._detectProvider(bundlerUrl) !== 'pimlico') return undefined
 
-    const erc7677 = new Erc7677Paymaster(bundlerUrl)
+    const erc7677 = this._getPaymaster(bundlerUrl)
     const result = await erc7677.sendRPCRequest('pimlico_getUserOperationGasPrice', [])
     if (!result?.fast) return undefined
 
@@ -673,7 +697,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /** @private */
-  static async _applyPaymasterToUserOp ({ mode, smartAccount, userOp, config, chainId }) {
+  async _applyPaymasterToUserOp ({ mode, smartAccount, userOp, config, chainId }) {
     if (mode === PaymasterMode.NATIVE) return userOp
 
     if (!userOp.signature || userOp.signature.length < 3) {
@@ -682,8 +706,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       )
     }
 
-    const provider = WalletAccountReadOnlyEvmErc4337._detectProvider(config.paymasterUrl)
-    const erc7677 = new Erc7677Paymaster(config.paymasterUrl, { chainId: BigInt(chainId), provider })
+    const erc7677 = this._getPaymaster(config.paymasterUrl, { chainId: BigInt(chainId) })
 
     const context = mode === PaymasterMode.TOKEN
       ? { token: config.paymasterToken.address }

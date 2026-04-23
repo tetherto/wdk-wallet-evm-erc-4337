@@ -606,10 +606,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
         return { userOp: baseUserOp, smartAccount, mode, chainId }
       }
 
-      const userOp = await this._applyPaymasterToUserOp({
+      const { userOp, tokenQuote } = await this._applyPaymasterToUserOp({
         mode, smartAccount, userOp: baseUserOp, config, chainId
       })
-      return { userOp, smartAccount, mode, chainId }
+      return { userOp, smartAccount, mode, chainId, tokenQuote }
     }
 
     const gasPrice = await this._fetchBundlerGasPrice(config.bundlerUrl)
@@ -620,11 +620,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       { callGasLimit: 0n, verificationGasLimit: 0n, preVerificationGas: 0n, ...gasPrice }
     )
 
-    const userOp = await this._applyPaymasterToUserOp({
+    const { userOp, tokenQuote } = await this._applyPaymasterToUserOp({
       mode, smartAccount, userOp: baseUserOp, config, chainId
     })
 
-    return { userOp, smartAccount, mode, chainId }
+    return { userOp, smartAccount, mode, chainId, tokenQuote }
   }
 
   /** @private */
@@ -633,44 +633,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
     try {
       const buildResult = await this._buildUserOperation(calls, config)
-      const { userOp } = buildResult
 
-      const gasCostWei = calculateUserOperationMaxGasCost(userOp)
-      const mode = WalletAccountReadOnlyEvmErc4337._resolvePaymasterMode(config)
+      const fee = buildResult.tokenQuote
+        ? buildResult.tokenQuote.tokenCost
+        : calculateUserOperationMaxGasCost(buildResult.userOp)
 
-      if (mode !== PaymasterMode.TOKEN) {
-        return { fee: gasCostWei, ...buildResult }
-      }
-
-      const chainId = await this._getChainId()
-      const erc7677 = this._getPaymaster(config.paymasterUrl, { chainId })
-      const chainIdHex = `0x${chainId.toString(16)}`
-      const entrypoint = config.entryPointAddress
-
-      let exchangeRate
-      if (WalletAccountReadOnlyEvmErc4337._detectProvider(config.paymasterUrl) === 'pimlico') {
-        const result = await erc7677.sendRPCRequest('pimlico_getTokenQuotes', [
-          { tokens: [config.paymasterToken.address] },
-          entrypoint,
-          chainIdHex
-        ])
-        const rate = result?.quotes?.[0]?.exchangeRate
-        if (rate === undefined) {
-          throw new Error(`Token ${config.paymasterToken.address} is not supported by the paymaster.`)
-        }
-        exchangeRate = BigInt(rate)
-      } else {
-        const result = await erc7677.sendRPCRequest('pm_supportedERC20Tokens', [entrypoint])
-        const token = result?.tokens?.find(
-          t => t.address.toLowerCase() === config.paymasterToken.address.toLowerCase()
-        )
-        if (token?.exchangeRate === undefined) {
-          throw new Error(`Token ${config.paymasterToken.address} is not supported by the paymaster.`)
-        }
-        exchangeRate = BigInt(token.exchangeRate)
-      }
-
-      const fee = (gasCostWei * exchangeRate + (10n ** 18n - 1n)) / (10n ** 18n)
       return { fee, ...buildResult }
     } catch (error) {
       if (error.message?.includes('AA50')) {
@@ -709,7 +676,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
   /** @private */
   async _applyPaymasterToUserOp ({ mode, smartAccount, userOp, config, chainId }) {
-    if (mode === PaymasterMode.NATIVE) return userOp
+    if (mode === PaymasterMode.NATIVE) return { userOp }
 
     if (!userOp.signature || userOp.signature.length < 3) {
       userOp.signature = SafeAccount030.formatSignaturesToUseroperationSignature(
@@ -723,12 +690,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       ? { token: config.paymasterToken.address }
       : (config.sponsorshipPolicyId ? { sponsorshipPolicyId: config.sponsorshipPolicyId } : {})
 
-    return await erc7677.createPaymasterUserOperation(
+    const result = await erc7677.createPaymasterUserOperation(
       smartAccount,
       userOp,
       config.bundlerUrl,
       context,
       { entrypoint: config.entryPointAddress }
     )
+
+    return { userOp: result.userOperation, tokenQuote: result.tokenQuote }
   }
 }

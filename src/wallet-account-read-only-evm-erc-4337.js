@@ -640,8 +640,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
       return { fee, ...buildResult }
     } catch (error) {
-      if (error.message?.includes('AA50')) {
-        throw new Error('Simulation failed: not enough funds in the safe account to repay the paymaster.')
+      const msg = [error.message, error.cause?.message].join(' ')
+      if (msg.includes('AA50') || msg.includes('token balance')) {
+        throw new Error(
+          'Token paymaster requires the account to hold the paymaster token for fee estimation. ' +
+          'Fund the account with the paymaster token before quoting.'
+        )
       }
       throw error
     }

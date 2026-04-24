@@ -1,3 +1,6 @@
+/** @typedef {import('ethers').Provider} Provider */
+/** @typedef {import('@tetherto/wdk-wallet-evm').FeeRates} FeeRates */
+/** @typedef {import('./wallet-account-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
 export default class WalletManagerEvmErc4337 extends WalletManager {
     /**
      * Creates a new wallet manager for evm blockchains that implements the [erc-4337](https://www.erc4337.io/docs) standard and its account abstraction features.
@@ -6,13 +9,6 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
      * @param {EvmErc4337WalletConfig} config - The configuration object.
      */
     constructor(seed: string | Uint8Array, config: EvmErc4337WalletConfig);
-    /**
-     * The evm erc-4337 wallet configuration.
-     *
-     * @protected
-     * @type {EvmErc4337WalletConfig}
-     */
-    protected _config: EvmErc4337WalletConfig;
     /**
      * An ethers provider to interact with a node of the blockchain.
      *
@@ -40,12 +36,6 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
      * @returns {Promise<WalletAccountEvmErc4337>} The account.
      */
     getAccountByPath(path: string): Promise<WalletAccountEvmErc4337>;
-    /**
-     * Returns the current fee rates.
-     *
-     * @returns {Promise<FeeRates>} The fee rates (in weis).
-     */
-    getFeeRates(): Promise<FeeRates>;
 }
 export type Provider = import("ethers").Provider;
 export type FeeRates = import("@tetherto/wdk-wallet-evm").FeeRates;

@@ -2,7 +2,7 @@ export { default } from "./src/wallet-manager-evm-erc-4337.js";
 export { default as WalletAccountReadOnlyEvmErc4337 } from "./src/wallet-account-read-only-evm-erc-4337.js";
 export { default as WalletAccountEvmErc4337 } from "./src/wallet-account-evm-erc-4337.js";
 export { ConfigurationError } from "./src/errors.js";
-export type UserOperationReceipt = import("@tetherto/wdk-safe-relay-kit").UserOperationReceipt;
+export type UserOperationReceipt = import("./src/wallet-account-read-only-evm-erc-4337.js").UserOperationReceipt;
 export type FeeRates = import("@tetherto/wdk-wallet-evm").FeeRates;
 export type KeyPair = import("@tetherto/wdk-wallet-evm").KeyPair;
 export type EvmTransaction = import("@tetherto/wdk-wallet-evm").EvmTransaction;
@@ -19,3 +19,4 @@ export type EvmErc4337WalletCommonConfig = import("./src/wallet-account-read-onl
 export type EvmErc4337WalletPaymasterTokenConfig = import("./src/wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletPaymasterTokenConfig;
 export type EvmErc4337WalletSponsorshipPolicyConfig = import("./src/wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletSponsorshipPolicyConfig;
 export type EvmErc4337WalletNativeCoinsConfig = import("./src/wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletNativeCoinsConfig;
+export type OnchainIdentifier = import("./src/wallet-account-read-only-evm-erc-4337.js").OnchainIdentifier;

@@ -20,6 +20,8 @@ import WalletManagerEvm from '@tetherto/wdk-wallet-evm'
 
 import { BrowserProvider, JsonRpcProvider } from 'ethers'
 
+import FailoverProvider from '@tetherto/wdk-failover-provider'
+
 import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
 
 /** @typedef {import('ethers').Provider} Provider */
@@ -29,6 +31,14 @@ import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
 /** @typedef {import('./wallet-account-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
 
 export default class WalletManagerEvmErc4337 extends WalletManager {
+  /**
+   * An ethers provider to interact with a node of the blockchain.
+   *
+   * @protected
+   * @type {Provider}
+   */
+  _provider
+
   /**
    * Creates a new wallet manager for evm blockchains that implements the [erc-4337](https://www.erc4337.io/docs) standard and its account abstraction features.
    *
@@ -46,18 +56,28 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
      */
     this._config = config
 
-    const { provider } = config
+    const { provider, retries = 3 } = config
 
-    if (provider) {
-      /**
-       * An ethers provider to interact with a node of the blockchain.
-       *
-       * @protected
-       * @type {Provider | undefined}
-       */
-      this._provider = typeof provider === 'string'
-        ? new JsonRpcProvider(provider)
-        : new BrowserProvider(provider)
+    if (Array.isArray(provider)) {
+      if (!provider.length) {
+        throw new Error("The 'provider' option cannot be set to an empty list.")
+      }
+
+      const failoverProvider = new FailoverProvider({ retries })
+
+      for (const entry of provider) {
+        const option = typeof entry === 'string'
+          ? new JsonRpcProvider(entry)
+          : new BrowserProvider(entry)
+        failoverProvider.addProvider(option)
+      }
+
+      this._provider = failoverProvider.initialize()
+    } else {
+      this._provider =
+        typeof provider === 'string'
+          ? new JsonRpcProvider(provider)
+          : new BrowserProvider(provider)
     }
   }
 

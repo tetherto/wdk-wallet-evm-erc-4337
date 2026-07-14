@@ -26,6 +26,7 @@ import {
   AbstractionKitError,
   Bundler,
   Erc7677Paymaster,
+  HttpTransport,
   ENTRYPOINT_V7,
   calculateUserOperationMaxGasCost
 } from 'abstractionkit'
@@ -121,6 +122,7 @@ export const FEE_TOLERANCE_COEFFICIENT = 120n
  * @property {string | Eip1193Provider | Array<string | Eip1193Provider>} provider - The url of the rpc provider, or an instance of a class that implements eip-1193. It's also possible to provide an array of urls or EIP 1193 providers instead. In such case, connection errors will cause the wallet to automatically fallback on the next provider in the list.
  * @property {number} [retries] - If set and if 'provider' is a list of urls or EIP 1193 providers, the number of additional retry attempts after the initial call fails. Total attempts = `1 + retries`. For example, `retries: 3` with 4 providers will try each provider once before throwing. If `retries` exceeds the number of providers, the failover will loop back and retry already-failed providers in round-robin order. Default: 3.
  * @property {string} bundlerUrl - The url of the bundler service.
+ * @property {Record<string, string>} [bundlerHeaders] - Optional HTTP headers sent on every request to the bundler (e.g. `{ Authorization: 'Bearer <key>' }`). Use for bundlers that require authentication.
  * @property {string} safeModulesVersion - Version of the Safe 4337 module set to deploy with the account (e.g. "0.3.0"). Determines the module addresses used in init code.
  * @property {OnChainIdentifier | string} [onChainIdentifier] - Optional on-chain identifier. Appends a 50-byte project marker to every UserOperation callData. Pass a string to reuse it as the project name, or a full object for more control.
  * @property {boolean} [parallel] - When true, each send is placed in a fresh, independent nonce lane (a random 192-bit key at sequence 0) so concurrent or back-to-back sends don't collide on the nonce. Ordering between such sends is not guaranteed and each consumes a new EntryPoint nonce slot. Ignored when `nonceKey` is set. Overridable per call.
@@ -132,6 +134,7 @@ export const FEE_TOLERANCE_COEFFICIENT = 120n
  * @property {false} [isSponsored] - Whether the paymaster is sponsoring the account.
  * @property {false} [useNativeCoins] - Whether to use native coins instead of a paymaster to pay for gas fees.
  * @property {string} paymasterUrl - The url of the paymaster service.
+ * @property {Record<string, string>} [paymasterHeaders] - Optional HTTP headers sent on every request to the paymaster (e.g. `{ Authorization: 'Bearer <key>' }`). Use for paymasters that require authentication.
  * @property {string} paymasterAddress - The address of the paymaster smart contract.
  * @property {Object} paymasterToken - The paymaster token configuration.
  * @property {string} paymasterToken.address - The address of the paymaster token.
@@ -144,6 +147,7 @@ export const FEE_TOLERANCE_COEFFICIENT = 120n
  * @property {true} isSponsored - Whether the paymaster is sponsoring the account.
  * @property {false} [useNativeCoins] - Whether to use native coins instead of a paymaster to pay for gas fees.
  * @property {string} paymasterUrl - The url of the paymaster service.
+ * @property {Record<string, string>} [paymasterHeaders] - Optional HTTP headers sent on every request to the paymaster (e.g. `{ Authorization: 'Bearer <key>' }`). Use for paymasters that require authentication.
  * @property {string} [sponsorshipPolicyId] - Identifier of the paymaster sponsorship policy to apply (provider-specific). Optional; some paymasters infer the policy from the project key.
  */
 
@@ -491,6 +495,23 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
+   * Builds the RPC target for an AbstractionKit client (Bundler / Erc7677Paymaster).
+   *
+   * When `headers` are provided, the URL is wrapped in an `HttpTransport` that injects those
+   * headers on every request (e.g. `{ Authorization: 'Bearer <key>' }` for authenticated
+   * bundlers/paymasters). Otherwise the plain URL string is returned, preserving AbstractionKit's
+   * default transport and provider auto-detection.
+   *
+   * @protected
+   * @param {string} url - The bundler or paymaster RPC url.
+   * @param {Record<string, string>} [headers] - Optional HTTP headers to inject on every request.
+   * @returns {string | HttpTransport} The url, or an HttpTransport carrying the headers.
+   */
+  static _rpcTarget (url, headers) {
+    return headers ? new HttpTransport(url, { headers }) : url
+  }
+
+  /**
    * Returns an AbstractionKit Bundler for querying UserOperations.
    *
    * @protected
@@ -498,16 +519,18 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    */
   _getBundler () {
     if (!this._bundler) {
-      this._bundler = new Bundler(this._config.bundlerUrl)
+      const rpc = WalletAccountReadOnlyEvmErc4337._rpcTarget(this._config.bundlerUrl, this._config.bundlerHeaders)
+      this._bundler = new Bundler(rpc)
     }
     return this._bundler
   }
 
   /** @private */
-  _getPaymaster (url, options = {}) {
+  _getPaymaster (url, options = {}, headers = undefined) {
     if (!this._paymasters.has(url)) {
       const provider = WalletAccountReadOnlyEvmErc4337._detectProvider(url)
-      this._paymasters.set(url, new Erc7677Paymaster(url, { ...options, provider }))
+      const rpc = WalletAccountReadOnlyEvmErc4337._rpcTarget(url, headers)
+      this._paymasters.set(url, new Erc7677Paymaster(rpc, { ...options, provider }))
     }
     return this._paymasters.get(url)
   }
@@ -652,8 +675,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       ? { ...txOverrides }
       : { ...gasPrice, ...txOverrides }
 
+    const bundlerRpc = WalletAccountReadOnlyEvmErc4337._rpcTarget(config.bundlerUrl, config.bundlerHeaders)
     const baseUserOp = (mode === PaymasterMode.NATIVE || provider === 'candide')
-      ? await smartAccount.createUserOperation(calls, this._provider, config.bundlerUrl, overrides)
+      ? await smartAccount.createUserOperation(calls, this._provider, bundlerRpc, overrides)
       : await smartAccount.createUserOperation(calls, this._provider, undefined, { skipGasEstimation: true, ...overrides })
 
     if (mode === PaymasterMode.NATIVE) {
@@ -737,7 +761,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   async _fetchBundlerGasPrice (bundlerUrl) {
     if (WalletAccountReadOnlyEvmErc4337._detectProvider(bundlerUrl) !== 'pimlico') return undefined
 
-    const erc7677 = this._getPaymaster(bundlerUrl)
+    const erc7677 = this._getPaymaster(bundlerUrl, {}, this._config.bundlerHeaders)
     const result = await erc7677.sendRPCRequest('pimlico_getUserOperationGasPrice', [])
     if (!result?.fast) return undefined
 
@@ -758,7 +782,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
   /** @private */
   async _applyPaymasterToUserOp ({ mode, smartAccount, userOp, config, chainId, txOverrides = {} }) {
-    const erc7677 = this._getPaymaster(config.paymasterUrl, { chainId: BigInt(chainId) })
+    const erc7677 = this._getPaymaster(config.paymasterUrl, { chainId: BigInt(chainId) }, config.paymasterHeaders)
 
     const context = mode === PaymasterMode.TOKEN
       ? { token: config.paymasterToken.address }
@@ -769,10 +793,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     if (txOverrides.verificationGasLimit !== undefined) paymasterOverrides.verificationGasLimit = txOverrides.verificationGasLimit
     if (txOverrides.preVerificationGas !== undefined) paymasterOverrides.preVerificationGas = txOverrides.preVerificationGas
 
+    const bundlerRpc = WalletAccountReadOnlyEvmErc4337._rpcTarget(config.bundlerUrl, config.bundlerHeaders)
     const result = await erc7677.createPaymasterUserOperation(
       smartAccount,
       userOp,
-      config.bundlerUrl,
+      bundlerRpc,
       context,
       paymasterOverrides
     )

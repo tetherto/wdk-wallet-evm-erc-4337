@@ -526,7 +526,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /** @private */
-  _getPaymaster (url, options = {}, headers = undefined) {
+  _getPaymaster (url, options = {}, headers) {
     if (!this._paymasters.has(url)) {
       const provider = WalletAccountReadOnlyEvmErc4337._detectProvider(url)
       const rpc = WalletAccountReadOnlyEvmErc4337._rpcTarget(url, headers)
@@ -668,7 +668,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       ? WalletAccountReadOnlyEvmErc4337._detectProvider(config.paymasterUrl)
       : null
 
-    const gasPrice = await this._fetchBundlerGasPrice(config.bundlerUrl)
+    const gasPrice = await this._fetchBundlerGasPrice(config.bundlerUrl, config.bundlerHeaders)
 
     const feePairOverridden = txOverrides.maxFeePerGas !== undefined || txOverrides.maxPriorityFeePerGas !== undefined
     const overrides = feePairOverridden
@@ -758,10 +758,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /** @private */
-  async _fetchBundlerGasPrice (bundlerUrl) {
+  async _fetchBundlerGasPrice (bundlerUrl, bundlerHeaders) {
     if (WalletAccountReadOnlyEvmErc4337._detectProvider(bundlerUrl) !== 'pimlico') return undefined
 
-    const erc7677 = this._getPaymaster(bundlerUrl, {}, this._config.bundlerHeaders)
+    const erc7677 = new Erc7677Paymaster(WalletAccountReadOnlyEvmErc4337._rpcTarget(bundlerUrl, bundlerHeaders))
     const result = await erc7677.sendRPCRequest('pimlico_getUserOperationGasPrice', [])
     if (!result?.fast) return undefined
 

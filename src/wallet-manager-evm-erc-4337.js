@@ -26,6 +26,8 @@ import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
 
 /** @typedef {import('ethers').Provider} Provider */
 
+/** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
+
 /** @typedef {import('@tetherto/wdk-wallet-evm').FeeRates} FeeRates */
 
 /** @typedef {import('./wallet-account-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
@@ -104,12 +106,36 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    */
   async getAccountByPath (path) {
     if (!this._accounts[path]) {
-      const account = new WalletAccountEvmErc4337(this.seed, path, this._config)
+      const account = new WalletAccountEvmErc4337(this.seed, path, {
+        ...this._config,
+        provider: WalletManagerEvmErc4337._asEip1193(this._provider)
+      })
 
       this._accounts[path] = account
     }
 
     return this._accounts[path]
+  }
+
+  /**
+   * Adapts an ethers Provider (or failover aggregate) to EIP-1193 without constructing
+   * a new JsonRpcProvider. Already-EIP-1193 objects are returned as-is.
+   *
+   * @protected
+   * @param {Provider | Eip1193Provider} provider - An ethers Provider, failover aggregate, or EIP-1193 provider to adapt.
+   * @returns {Eip1193Provider} An EIP-1193-compatible provider that reuses the given client.
+   */
+  static _asEip1193 (provider) {
+    if (provider && typeof provider.request === 'function') {
+      return /** @type {Eip1193Provider} */ (provider)
+    }
+
+    return {
+      provider,
+      request ({ method, params }) {
+        return this.provider.send(method, params ?? [])
+      }
+    }
   }
 
   /**

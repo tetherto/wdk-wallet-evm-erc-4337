@@ -206,7 +206,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     }
 
     const abi = ['function approve(address spender, uint256 amount) returns (bool)']
-    
+
     // No runner needed - only encoding calldata for the UserOperation.
     const contract = new Contract(token, abi)
 

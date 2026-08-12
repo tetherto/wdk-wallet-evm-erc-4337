@@ -495,20 +495,18 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Builds the RPC target for an AbstractionKit client (Bundler / Erc7677Paymaster).
+   * Builds the RPC transport for an AbstractionKit client (Bundler / Erc7677Paymaster).
    *
-   * When `headers` are provided, the URL is wrapped in an `HttpTransport` that injects those
-   * headers on every request (e.g. `{ Authorization: 'Bearer <key>' }` for authenticated
-   * bundlers/paymasters). Otherwise the plain URL string is returned, preserving AbstractionKit's
-   * default transport and provider auto-detection.
+   * When `headers` are provided, the transport injects them on every request (e.g.
+   * `{ Authorization: 'Bearer <key>' }` for authenticated bundlers/paymasters).
    *
    * @protected
    * @param {string} url - The bundler or paymaster RPC url.
    * @param {Record<string, string>} [headers] - Optional HTTP headers to inject on every request.
-   * @returns {string | HttpTransport} The url, or an HttpTransport carrying the headers.
+   * @returns {HttpTransport} An HttpTransport for the url, carrying the headers when set.
    */
   static _rpcTarget (url, headers) {
-    return headers ? new HttpTransport(url, { headers }) : url
+    return new HttpTransport(url, headers ? { headers } : {})
   }
 
   /**
@@ -526,13 +524,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /** @private */
-  _getPaymaster (url, options = {}, headers) {
-    if (!this._paymasters.has(url)) {
+  _getPaymaster (url, headers, options = {}) {
+    const key = JSON.stringify([url, headers ?? null])
+    if (!this._paymasters.has(key)) {
       const provider = WalletAccountReadOnlyEvmErc4337._detectProvider(url)
       const rpc = WalletAccountReadOnlyEvmErc4337._rpcTarget(url, headers)
-      this._paymasters.set(url, new Erc7677Paymaster(rpc, { ...options, provider }))
+      this._paymasters.set(key, new Erc7677Paymaster(rpc, { ...options, provider }))
     }
-    return this._paymasters.get(url)
+    return this._paymasters.get(key)
   }
 
   /**
@@ -782,7 +781,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
   /** @private */
   async _applyPaymasterToUserOp ({ mode, smartAccount, userOp, config, chainId, txOverrides = {} }) {
-    const erc7677 = this._getPaymaster(config.paymasterUrl, { chainId: BigInt(chainId) }, config.paymasterHeaders)
+    const erc7677 = this._getPaymaster(config.paymasterUrl, config.paymasterHeaders, { chainId: BigInt(chainId) })
 
     const context = mode === PaymasterMode.TOKEN
       ? { token: config.paymasterToken.address }

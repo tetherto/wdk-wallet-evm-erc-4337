@@ -173,19 +173,17 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     protected _getSmartAccount(config?: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): Promise<import('abstractionkit').SafeAccountV0_3_0>;
     /**
-     * Builds the RPC target for an AbstractionKit client (Bundler / Erc7677Paymaster).
+     * Builds the RPC transport for an AbstractionKit client (Bundler / Erc7677Paymaster).
      *
-     * When `headers` are provided, the URL is wrapped in an `HttpTransport` that injects those
-     * headers on every request (e.g. `{ Authorization: 'Bearer <key>' }` for authenticated
-     * bundlers/paymasters). Otherwise the plain URL string is returned, preserving AbstractionKit's
-     * default transport and provider auto-detection.
+     * When `headers` are provided, the transport injects them on every request (e.g.
+     * `{ Authorization: 'Bearer <key>' }` for authenticated bundlers/paymasters).
      *
      * @protected
      * @param {string} url - The bundler or paymaster RPC url.
      * @param {Record<string, string>} [headers] - Optional HTTP headers to inject on every request.
-     * @returns {string | HttpTransport} The url, or an HttpTransport carrying the headers.
+     * @returns {HttpTransport} An HttpTransport for the url, carrying the headers when set.
      */
-    protected static _rpcTarget(url: string, headers?: Record<string, string>): string | HttpTransport;
+    protected static _rpcTarget(url: string, headers?: Record<string, string>): HttpTransport;
     /**
      * Returns an AbstractionKit Bundler for querying UserOperations.
      *

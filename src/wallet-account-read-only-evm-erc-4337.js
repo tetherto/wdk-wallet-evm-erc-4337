@@ -180,11 +180,17 @@ const SAFE_MODULES_MAP = {
   }
 }
 
+const PINNED_SAFE_ADDRESS = Symbol('pinnedSafeAddress')
+
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
   /**
    * Creates a new read-only evm [erc-4337](https://www.erc4337.io/docs) wallet account.
    *
-   * @param {string} address - The evm account's address.
+   * `address` is the safe **owner**'s address, not the safe's: the account's own address is the
+   * counterfactual safe address derived from it. To read an already-known safe, use
+   * {@link WalletAccountReadOnlyEvmErc4337.fromSafeAddress} instead.
+   *
+   * @param {string} address - The safe owner's evm address.
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
    * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
    */
@@ -193,9 +199,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       throw new ConfigurationError(`Unsupported safe modules version: ${config.safeModulesVersion}`)
     }
 
-    const safeAddress = WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config)
+    const { [PINNED_SAFE_ADDRESS]: pinnedSafeAddress, ...accountConfig } = config
 
-    super(safeAddress)
+    super(pinnedSafeAddress ?? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, accountConfig))
 
     /**
      * The read-only evm erc-4337 wallet account configuration.
@@ -203,7 +209,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @protected
      * @type {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>}
      */
-    this._config = config
+    this._config = accountConfig
 
     /**
      * Cached AbstractionKit bundler.
@@ -230,7 +236,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     this._paymasters = new Map()
 
     /** @private */
-    this._ownerAccountAddress = address
+    this._ownerAccountAddress = pinnedSafeAddress === undefined ? address : undefined
 
     /**
      * An EIP-1193–compatible provider used to interact with the blockchain.
@@ -262,6 +268,26 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   static predictSafeAddress (owner, config) {
     const overrides = WalletAccountReadOnlyEvmErc4337._getInitCodeOverrides(config)
     return SafeAccount030.createAccountAddress([owner], overrides)
+  }
+
+  /**
+   * Creates a read-only account for an already-known safe address.
+   *
+   * The address is used verbatim, so every read — balances, allowances, quotes — resolves against
+   * the safe the caller passed in. This is the counterpart to the constructor, which takes the
+   * safe's owner and derives the safe address from it.
+   *
+   * The safe's owner is unknown to an account created this way, so {@link WalletAccountReadOnlyEvmErc4337#verify}
+   * and {@link WalletAccountReadOnlyEvmErc4337#verifyTypedData} throw, and the safe must already be
+   * deployed for the operations that build a user operation.
+   *
+   * @param {string} safeAddress - The address of an already-deployed safe account.
+   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
+   * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
+   * @returns {WalletAccountReadOnlyEvmErc4337} The read-only account.
+   */
+  static fromSafeAddress (safeAddress, config) {
+    return new WalletAccountReadOnlyEvmErc4337(undefined, { ...config, [PINNED_SAFE_ADDRESS]: safeAddress })
   }
 
   /**
@@ -488,10 +514,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @param {string} message - The original message.
    * @param {string} signature - The signature to verify.
+   * @throws {ConfigurationError} If the account was created from a safe address, whose owner is unknown.
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async verify (message, signature) {
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, this._config)
+    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._getOwnerAccountAddress(), this._config)
     return await evmReadOnlyAccount.verify(message, signature)
   }
 
@@ -500,12 +527,28 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @param {TypedData} typedData - The typed data to verify.
    * @param {string} signature - The signature to verify.
+   * @throws {ConfigurationError} If the account was created from a safe address, whose owner is unknown.
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async verifyTypedData (typedData, signature) {
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, this._config)
+    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._getOwnerAccountAddress(), this._config)
 
     return await evmReadOnlyAccount.verifyTypedData(typedData, signature)
+  }
+
+  /**
+   * Returns the safe owner's address.
+   *
+   * @private
+   * @throws {ConfigurationError} If the account was created from a safe address, whose owner is unknown.
+   * @returns {string} The safe owner's address.
+   */
+  _getOwnerAccountAddress () {
+    if (this._ownerAccountAddress === undefined) {
+      throw new ConfigurationError("The safe owner's address is unknown because this account was created from a safe address. Construct the account from the owner's address to use this operation.")
+    }
+
+    return this._ownerAccountAddress
   }
 
   /**
@@ -554,6 +597,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @protected
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} [config] - The wallet configuration. Defaults to the instance configuration.
+   * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
    * @returns {Promise<SafeAccountV0_3_0>} The safe account instance.
    */
   async _getSmartAccount (config = this._config) {
@@ -565,6 +609,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     if (await SafeAccount030.isDeployed(safeAddress, this._provider)) {
       this._deployedSmartAccount = new SafeAccount030(safeAddress, overrides)
       return this._deployedSmartAccount
+    }
+
+    if (this._ownerAccountAddress === undefined) {
+      throw new ConfigurationError(`The safe at ${safeAddress} is not deployed. An account created from a safe address cannot build the safe's deployment data, which requires the owner's address.`)
     }
 
     return SafeAccount030.initializeNewAccount([this._ownerAccountAddress], overrides)

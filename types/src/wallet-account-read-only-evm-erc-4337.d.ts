@@ -10,6 +10,23 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     static predictSafeAddress(owner: string, config: Pick<EvmErc4337WalletConfig, "safeModulesVersion" | "onChainIdentifier">): string;
     /**
+     * Creates a read-only account for an already-known safe address.
+     *
+     * The address is used verbatim, so every read — balances, allowances, quotes — resolves against
+     * the safe the caller passed in. This is the counterpart to the constructor, which takes the
+     * safe's owner and derives the safe address from it.
+     *
+     * The safe's owner is unknown to an account created this way, so {@link WalletAccountReadOnlyEvmErc4337#verify}
+     * and {@link WalletAccountReadOnlyEvmErc4337#verifyTypedData} throw, and the safe must already be
+     * deployed for the operations that build a user operation.
+     *
+     * @param {string} safeAddress - The address of an already-deployed safe account.
+     * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
+     * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
+     * @returns {WalletAccountReadOnlyEvmErc4337} The read-only account.
+     */
+    static fromSafeAddress(safeAddress: string, config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): WalletAccountReadOnlyEvmErc4337;
+    /**
      * Builds the init code overrides from the wallet configuration.
      *
      * @protected
@@ -20,7 +37,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     /**
      * Creates a new read-only evm [erc-4337](https://www.erc4337.io/docs) wallet account.
      *
-     * @param {string} address - The evm account's address.
+     * `address` is the safe **owner**'s address, not the safe's: the account's own address is the
+     * counterfactual safe address derived from it. To read an already-known safe, use
+     * {@link WalletAccountReadOnlyEvmErc4337.fromSafeAddress} instead.
+     *
+     * @param {string} address - The safe owner's evm address.
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
      * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
      */
@@ -171,6 +192,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @param {string} message - The original message.
      * @param {string} signature - The signature to verify.
+     * @throws {ConfigurationError} If the account was created from a safe address, whose owner is unknown.
      * @returns {Promise<boolean>} True if the signature is valid.
      */
     verify(message: string, signature: string): Promise<boolean>;
@@ -179,9 +201,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @param {TypedData} typedData - The typed data to verify.
      * @param {string} signature - The signature to verify.
+     * @throws {ConfigurationError} If the account was created from a safe address, whose owner is unknown.
      * @returns {Promise<boolean>} True if the signature is valid.
      */
     verifyTypedData(typedData: TypedData, signature: string): Promise<boolean>;
+    /** @private */
+    private _getOwnerAccountAddress;
     /**
      * Validates the configuration to ensure all required fields are present.
      *
@@ -196,6 +221,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @protected
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The wallet configuration. Defaults to the instance configuration.
+     * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
      * @returns {Promise<SafeAccountV0_3_0>} The safe account instance.
      */
     protected _getSmartAccount(config?: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): Promise<import('abstractionkit').SafeAccountV0_3_0>;

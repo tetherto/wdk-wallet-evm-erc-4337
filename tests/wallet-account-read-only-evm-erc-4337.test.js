@@ -73,6 +73,7 @@ const { WalletAccountReadOnlyEvmErc4337, ConfigurationError } = await import('..
 
 const OWNER_ADDRESS = '0x405005C7c4422390F4B334F64Cf20E0b767131d0'
 const SAFE_ADDRESS = '0x120Ac3c0B46fBAf2e8452A23BD61a2Da9B139551'
+const EXISTING_SAFE_ADDRESS = '0xFE0847a52f1C75A01B06cFC636c87683E72a6029'
 const SPENDER = '0xa460AEbce0d3A4BecAd8ccf9D6D4861296c503Bd'
 const TOKEN_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
 
@@ -249,6 +250,70 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         })
 
         expect(address).toBe(SAFE_ADDRESS)
+      })
+    })
+
+    describe('fromSafeAddress', () => {
+      test('should use the given safe address without deriving one from it', async () => {
+        const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
+
+        const address = await safeAccount.getAddress()
+
+        expect(address).toBe(EXISTING_SAFE_ADDRESS)
+        expect(address).not.toBe(WalletAccountReadOnlyEvmErc4337.predictSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG))
+      })
+
+      test('should read the balance of the given safe address', async () => {
+        getBalanceMock.mockResolvedValue(DUMMY_BALANCE)
+
+        const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
+        const balance = await safeAccount.getBalance()
+
+        expect(balance).toBe(DUMMY_BALANCE)
+        expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
+      })
+
+      test('should quote against the given safe address', async () => {
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_USER_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+
+        const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, PAYMASTER_TOKEN_CONFIG)
+        const { fee } = await safeAccount.quoteSendTransaction({ to: SPENDER, value: 1, data: '0x' })
+
+        expect(fee).toBe(600_000n)
+        expect(SafeAccountMock).toHaveBeenCalledWith(EXISTING_SAFE_ADDRESS, INIT_CODE_OVERRIDES)
+      })
+
+      test('should throw if the safe modules version is not supported', () => {
+        expect(() => WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, { ...SPONSORED_CONFIG, safeModulesVersion: '0.2.0' }))
+          .toThrow(new ConfigurationError('Unsupported safe modules version: 0.2.0'))
+      })
+
+      test('should throw when verifying a message because the safe owner is unknown', async () => {
+        const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
+
+        await expect(safeAccount.verify('Dummy message to sign.', '0xdead'))
+          .rejects.toThrow(new ConfigurationError("The safe owner's address is unknown because this account was created from a safe address. Construct the account from the owner's address to use this operation."))
+        expect(verifyMock).not.toHaveBeenCalled()
+      })
+
+      test('should throw when verifying typed data because the safe owner is unknown', async () => {
+        const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
+
+        await expect(safeAccount.verifyTypedData({ domain: {}, types: {}, message: {} }, '0xdead'))
+          .rejects.toThrow(ConfigurationError)
+        expect(verifyTypedDataMock).not.toHaveBeenCalled()
+      })
+
+      test('should throw when quoting for a safe that is not deployed', async () => {
+        isDeployedMock.mockResolvedValue(false)
+
+        const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, PAYMASTER_TOKEN_CONFIG)
+
+        await expect(safeAccount.quoteSendTransaction({ to: SPENDER, value: 1, data: '0x' }))
+          .rejects.toThrow(new ConfigurationError(`The safe at ${EXISTING_SAFE_ADDRESS} is not deployed. An account created from a safe address cannot build the safe's deployment data, which requires the owner's address.`))
       })
     })
 

@@ -14,7 +14,7 @@
 
 'use strict'
 
-import { isHexString, JsonRpcProvider } from 'ethers'
+import { getAddress, isAddress, isHexString, JsonRpcProvider } from 'ethers'
 
 import { WalletAccountReadOnly, NoSuchElementError, TransactionError, TransactionErrorReason, ValueError } from '@tetherto/wdk-wallet'
 
@@ -281,13 +281,17 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * and {@link WalletAccountReadOnlyEvmErc4337#verifyTypedData} throw, and the safe must already be
    * deployed for the operations that build a user operation.
    *
-   * @param {string} safeAddress - The address of an already-deployed safe account.
+   * @param {string} safeAddress - The address of an already-deployed safe account. Normalized to its checksummed form.
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
-   * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
+   * @throws {ConfigurationError} If `safeAddress` is not a well-formed evm address, or if `config.safeModulesVersion` is not in the supported set.
    * @returns {WalletAccountReadOnlyEvmErc4337} The read-only account.
    */
   static fromSafeAddress (safeAddress, config) {
-    return new WalletAccountReadOnlyEvmErc4337(undefined, { ...config, [PINNED_SAFE_ADDRESS]: safeAddress })
+    if (!isAddress(safeAddress)) {
+      throw new ConfigurationError(`Invalid safe address: ${safeAddress}`)
+    }
+
+    return new WalletAccountReadOnlyEvmErc4337(undefined, { ...config, [PINNED_SAFE_ADDRESS]: getAddress(safeAddress) })
   }
 
   /**
@@ -539,7 +543,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   /**
    * Returns the safe owner's address.
    *
-   * @private
+   * @protected
    * @throws {ConfigurationError} If the account was created from a safe address, whose owner is unknown.
    * @returns {string} The safe owner's address.
    */

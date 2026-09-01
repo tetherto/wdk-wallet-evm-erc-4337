@@ -291,6 +291,19 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           .toThrow(new ConfigurationError('Unsupported safe modules version: 0.2.0'))
       })
 
+      test('should normalize a lowercase safe address to its checksummed form', async () => {
+        const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS.toLowerCase(), SPONSORED_CONFIG)
+
+        const address = await safeAccount.getAddress()
+
+        expect(address).toBe(EXISTING_SAFE_ADDRESS)
+      })
+
+      test('should throw if the safe address is not a well-formed evm address', () => {
+        expect(() => WalletAccountReadOnlyEvmErc4337.fromSafeAddress('not-an-address', SPONSORED_CONFIG))
+          .toThrow(new ConfigurationError('Invalid safe address: not-an-address'))
+      })
+
       test('should throw when verifying a message because the safe owner is unknown', async () => {
         const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
 

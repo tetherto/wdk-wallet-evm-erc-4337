@@ -199,9 +199,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       throw new ConfigurationError(`Unsupported safe modules version: ${config.safeModulesVersion}`)
     }
 
-    const { [PINNED_SAFE_ADDRESS]: pinnedSafeAddress, ...accountConfig } = config
+    const { [PINNED_SAFE_ADDRESS]: pinnedSafeAddress, ...unpinnedConfig } = config
 
-    super(pinnedSafeAddress ?? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, accountConfig))
+    super(pinnedSafeAddress ?? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config))
 
     /**
      * The read-only evm erc-4337 wallet account configuration.
@@ -209,7 +209,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @protected
      * @type {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>}
      */
-    this._config = accountConfig
+    this._config = pinnedSafeAddress === undefined ? config : unpinnedConfig
 
     /**
      * Cached AbstractionKit bundler.
@@ -360,6 +360,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
    * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
    * @throws {TransactionError} If the token paymaster reports AA50 (account does not hold the paymaster token).
+   * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
    */
   async quoteSendTransaction (tx, config) {
     const mergedConfig = { ...this._config, ...config }
@@ -394,6 +395,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
    * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
    * @throws {TransactionError} If the token paymaster reports AA50 (account does not hold the paymaster token).
+   * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
    */
   async quoteTransfer (options, config, txOverrides) {
     const baseTx = await WalletAccountReadOnlyEvm._getTransferTransaction(options)
@@ -780,6 +782,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The wallet configuration.
    * @param {EvmErc4337GasOverrides & Nonce} [txOverrides] - Optional UserOperationV7 gas overrides extracted from the input transaction(s), plus an optional explicit lane `nonce`.
    * @returns {Promise<BuiltUserOperation>} The built operation, signing context, and (in token mode) the paymaster quote.
+   * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
    */
   async _buildUserOperation (calls, config, txOverrides = {}) {
     const chainId = await this._getChainId()

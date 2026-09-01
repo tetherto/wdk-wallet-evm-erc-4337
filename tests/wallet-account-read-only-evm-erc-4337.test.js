@@ -200,6 +200,12 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(() => new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider: [] }))
           .toThrow("The 'provider' option cannot be set to an empty list.")
       })
+
+      test('should pass the caller\'s configuration object through unchanged', async () => {
+        await account.getBalance()
+
+        expect(WalletAccountReadOnlyEvmMock.mock.calls[0][1]).toBe(SPONSORED_CONFIG)
+      })
     })
 
     describe('_getChainId', () => {
@@ -271,6 +277,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         expect(balance).toBe(DUMMY_BALANCE)
         expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
+        expect(Object.getOwnPropertySymbols(WalletAccountReadOnlyEvmMock.mock.calls[0][1])).toEqual([])
       })
 
       test('should quote against the given safe address', async () => {

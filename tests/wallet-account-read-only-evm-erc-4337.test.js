@@ -343,7 +343,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, PAYMASTER_TOKEN_CONFIG)
 
         await expect(safeAccount.quoteSendTransaction({ to: SPENDER, value: 1, data: '0x' }))
-          .rejects.toThrow(new ConfigurationError(`The safe at ${EXISTING_SAFE_ADDRESS} is not deployed. An account created from a safe address cannot build the safe's deployment data, which requires the owner's address.`))
+          .rejects.toThrow(new ConfigurationError(`The safe at '${EXISTING_SAFE_ADDRESS}' is not deployed. Deploying it requires the owner's address, which an account created from a safe address does not have.`))
       })
     })
 

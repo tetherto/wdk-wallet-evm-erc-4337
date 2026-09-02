@@ -201,6 +201,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     }
 
     const { [PINNED_SAFE_ADDRESS]: pinnedSafeAddress, ...unpinnedConfig } = config
+    const [accountConfig, ownerAccountAddress] = pinnedSafeAddress === undefined
+      ? [config, address]
+      : [unpinnedConfig, undefined]
 
     super(pinnedSafeAddress ?? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config))
 
@@ -210,7 +213,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @protected
      * @type {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>}
      */
-    this._config = pinnedSafeAddress === undefined ? config : unpinnedConfig
+    this._config = accountConfig
 
     /**
      * Cached AbstractionKit bundler.
@@ -242,7 +245,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @protected
      * @type {string | undefined}
      */
-    this._ownerAccountAddress = pinnedSafeAddress === undefined ? address : undefined
+    this._ownerAccountAddress = ownerAccountAddress
 
     /**
      * An EIP-1193–compatible provider used to interact with the blockchain.
@@ -623,7 +626,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     }
 
     if (this._ownerAccountAddress === undefined) {
-      throw new ConfigurationError(`The safe at ${safeAddress} is not deployed. An account created from a safe address cannot build the safe's deployment data, which requires the owner's address.`)
+      throw new ConfigurationError(`The safe at '${safeAddress}' is not deployed. Deploying it requires the owner's address, which an account created from a safe address does not have.`)
     }
 
     return SafeAccount030.initializeNewAccount([this._ownerAccountAddress], overrides)

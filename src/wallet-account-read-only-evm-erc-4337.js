@@ -186,13 +186,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   /**
    * Creates a new read-only evm [erc-4337](https://www.erc4337.io/docs) wallet account.
    *
-   * `address` is the safe **owner**'s address, not the safe's: the account's own address is the
-   * counterfactual safe address derived from it. To read an already-known safe, use
-   * {@link WalletAccountReadOnlyEvmErc4337.fromSafeAddress} instead.
+   * `address` is the safe owner's address; the account's own address is the counterfactual safe address derived
+   * from it. To read a safe whose address is already known, use {@link fromSafeAddress}.
    *
    * @param {string} address - The safe owner's evm address.
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
    * @throws {ValueError} If `address` is not a well-formed evm address.
+   * @throws {ValueError} If the `provider` option is set to an empty array.
    * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
    */
   constructor (address, config) {
@@ -285,21 +285,18 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Creates a read-only account for an already-known safe address.
+   * Creates a read-only account for a safe whose address is already known.
    *
-   * The address is used verbatim, so every read — balances, allowances, quotes — resolves against
-   * the safe the caller passed in. This is the counterpart to the constructor, which takes the
-   * safe's owner and derives the safe address from it.
+   * The address is used as the account's own address, so balances, allowances and quotes resolve against that
+   * safe. Its owner is unknown to the account: {@link verify} and {@link verifyTypedData} throw, and the safe must
+   * already be deployed for {@link quoteSendTransaction} and {@link quoteTransfer}.
    *
-   * The safe's owner is unknown to an account created this way, so {@link WalletAccountReadOnlyEvmErc4337#verify}
-   * and {@link WalletAccountReadOnlyEvmErc4337#verifyTypedData} throw, and the safe must already be
-   * deployed for the operations that build a user operation.
-   *
-   * @param {string} safeAddress - The address of an already-deployed safe account. Normalized to its checksummed form.
+   * @param {string} safeAddress - The safe's evm address. Normalized to its checksummed form.
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
    * @throws {ValueError} If `safeAddress` is not a well-formed evm address.
+   * @throws {ValueError} If the `provider` option is set to an empty array.
    * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
-   * @returns {WalletAccountReadOnlyEvmErc4337} The read-only account.
+   * @returns {WalletAccountReadOnlyEvmErc4337} A read-only account whose address is `safeAddress`.
    */
   static fromSafeAddress (safeAddress, config) {
     if (!isAddress(safeAddress)) {

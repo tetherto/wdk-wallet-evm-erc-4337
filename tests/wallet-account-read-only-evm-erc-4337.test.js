@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals'
 import { Contract } from 'ethers'
-import { NoSuchElementError, TransactionError, TransactionErrorReason, ValueError, WdkError } from '@tetherto/wdk-wallet'
+import { NoSuchElementError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError, WdkError } from '@tetherto/wdk-wallet'
 
 const actualWalletEvm = await import('@tetherto/wdk-wallet-evm')
 const actualAk = await import('abstractionkit')
@@ -315,7 +315,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
 
         await expect(safeAccount.verify('Dummy message to sign.', '0xdead'))
-          .rejects.toThrow(new ConfigurationError("The safe owner's address is unknown because this account was created from a safe address. Construct the account from the owner's address to use this operation."))
+          .rejects.toThrow(new UnsupportedOperationError('verify(message, signature)'))
         expect(verifyMock).not.toHaveBeenCalled()
       })
 
@@ -323,7 +323,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
 
         await expect(safeAccount.verifyTypedData({ domain: {}, types: {}, message: {} }, '0xdead'))
-          .rejects.toThrow(ConfigurationError)
+          .rejects.toThrow(new UnsupportedOperationError('verifyTypedData(typedData, signature)'))
         expect(verifyTypedDataMock).not.toHaveBeenCalled()
       })
 

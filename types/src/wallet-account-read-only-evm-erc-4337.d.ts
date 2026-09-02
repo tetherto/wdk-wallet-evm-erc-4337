@@ -194,7 +194,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @param {string} message - The original message.
      * @param {string} signature - The signature to verify.
-     * @throws {ConfigurationError} If the account was created from a safe address, whose owner is unknown.
+     * @throws {UnsupportedOperationError} If the account was created from a safe address, whose owner is unknown.
      * @returns {Promise<boolean>} True if the signature is valid.
      */
     verify(message: string, signature: string): Promise<boolean>;
@@ -203,18 +203,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @param {TypedData} typedData - The typed data to verify.
      * @param {string} signature - The signature to verify.
-     * @throws {ConfigurationError} If the account was created from a safe address, whose owner is unknown.
+     * @throws {UnsupportedOperationError} If the account was created from a safe address, whose owner is unknown.
      * @returns {Promise<boolean>} True if the signature is valid.
      */
     verifyTypedData(typedData: TypedData, signature: string): Promise<boolean>;
-    /**
-     * Returns the safe owner's address.
-     *
-     * @protected
-     * @throws {ConfigurationError} If the account was created from a safe address, whose owner is unknown.
-     * @returns {string} The safe owner's address.
-     */
-    protected _getOwnerAccountAddress(): string;
     /**
      * Validates the configuration to ensure all required fields are present.
      *

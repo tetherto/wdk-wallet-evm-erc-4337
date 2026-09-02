@@ -16,7 +16,7 @@
 
 import { getAddress, isAddress, isHexString, JsonRpcProvider } from 'ethers'
 
-import { WalletAccountReadOnly, NoSuchElementError, TransactionError, TransactionErrorReason, ValueError } from '@tetherto/wdk-wallet'
+import { WalletAccountReadOnly, NoSuchElementError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
 import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
@@ -520,11 +520,15 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @param {string} message - The original message.
    * @param {string} signature - The signature to verify.
-   * @throws {ConfigurationError} If the account was created from a safe address, whose owner is unknown.
+   * @throws {UnsupportedOperationError} If the account was created from a safe address, whose owner is unknown.
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async verify (message, signature) {
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._getOwnerAccountAddress(), this._config)
+    if (this._ownerAccountAddress === undefined) {
+      throw new UnsupportedOperationError('verify(message, signature)')
+    }
+
+    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, this._config)
     return await evmReadOnlyAccount.verify(message, signature)
   }
 
@@ -533,28 +537,17 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @param {TypedData} typedData - The typed data to verify.
    * @param {string} signature - The signature to verify.
-   * @throws {ConfigurationError} If the account was created from a safe address, whose owner is unknown.
+   * @throws {UnsupportedOperationError} If the account was created from a safe address, whose owner is unknown.
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async verifyTypedData (typedData, signature) {
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._getOwnerAccountAddress(), this._config)
-
-    return await evmReadOnlyAccount.verifyTypedData(typedData, signature)
-  }
-
-  /**
-   * Returns the safe owner's address.
-   *
-   * @protected
-   * @throws {ConfigurationError} If the account was created from a safe address, whose owner is unknown.
-   * @returns {string} The safe owner's address.
-   */
-  _getOwnerAccountAddress () {
     if (this._ownerAccountAddress === undefined) {
-      throw new ConfigurationError("The safe owner's address is unknown because this account was created from a safe address. Construct the account from the owner's address to use this operation.")
+      throw new UnsupportedOperationError('verifyTypedData(typedData, signature)')
     }
 
-    return this._ownerAccountAddress
+    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, this._config)
+
+    return await evmReadOnlyAccount.verifyTypedData(typedData, signature)
   }
 
   /**

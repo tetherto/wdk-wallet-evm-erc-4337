@@ -6,6 +6,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @param {string} owner - The safe owner's address.
      * @param {Pick<EvmErc4337WalletConfig, 'safeModulesVersion' | 'onChainIdentifier'>} config - The safe configuration.
+     * @throws {ValueError} If `owner` is not a well-formed evm address.
      * @returns {string} The Safe address.
      */
     static predictSafeAddress(owner: string, config: Pick<EvmErc4337WalletConfig, "safeModulesVersion" | "onChainIdentifier">): string;
@@ -22,7 +23,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @param {string} safeAddress - The address of an already-deployed safe account. Normalized to its checksummed form.
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
-     * @throws {ConfigurationError} If `safeAddress` is not a well-formed evm address, or if `config.safeModulesVersion` is not in the supported set.
+     * @throws {ValueError} If `safeAddress` is not a well-formed evm address.
+     * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
      * @returns {WalletAccountReadOnlyEvmErc4337} The read-only account.
      */
     static fromSafeAddress(safeAddress: string, config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): WalletAccountReadOnlyEvmErc4337;
@@ -43,6 +45,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @param {string} address - The safe owner's evm address.
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
+     * @throws {ValueError} If `address` is not a well-formed evm address.
      * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
      */
     constructor(address: string, config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">);
@@ -79,8 +82,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @type {bigint | undefined}
      */
     protected _chainId: bigint | undefined;
-    /** @private */
-    private _ownerAccountAddress;
+    /**
+     * The safe owner's address, or `undefined` when the account was created from a safe address.
+     *
+     * @protected
+     * @type {string | undefined}
+     */
+    protected _ownerAccountAddress: string | undefined;
     /**
      * Returns the account's eth balance.
      *

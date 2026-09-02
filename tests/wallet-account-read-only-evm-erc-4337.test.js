@@ -194,6 +194,11 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           .toThrow(WdkError)
       })
 
+      test('should throw if the owner address is not a well-formed evm address', () => {
+        expect(() => new WalletAccountReadOnlyEvmErc4337('not-an-address', SPONSORED_CONFIG))
+          .toThrow(new ValueError("Invalid owner address: 'not-an-address'."))
+      })
+
       test('should throw if the provider is an empty list', () => {
         expect(() => new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider: [] }))
           .toThrow(ValueError)
@@ -257,6 +262,11 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         expect(address).toBe(SAFE_ADDRESS)
       })
+
+      test('should throw if the owner address is not a well-formed evm address', () => {
+        expect(() => WalletAccountReadOnlyEvmErc4337.predictSafeAddress('not-an-address', { safeModulesVersion: '0.3.0' }))
+          .toThrow(new ValueError("Invalid owner address: 'not-an-address'."))
+      })
     })
 
     describe('fromSafeAddress', () => {
@@ -308,7 +318,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
       test('should throw if the safe address is not a well-formed evm address', () => {
         expect(() => WalletAccountReadOnlyEvmErc4337.fromSafeAddress('not-an-address', SPONSORED_CONFIG))
-          .toThrow(new ConfigurationError('Invalid safe address: not-an-address'))
+          .toThrow(new ValueError("Invalid safe address: 'not-an-address'."))
       })
 
       test('should throw when verifying a message because the safe owner is unknown', async () => {

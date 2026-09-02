@@ -192,6 +192,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @param {string} address - The safe owner's evm address.
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
+   * @throws {ValueError} If `address` is not a well-formed evm address.
    * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
    */
   constructor (address, config) {
@@ -235,7 +236,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     this._paymasters = new Map()
 
-    /** @private */
+    /**
+     * The safe owner's address, or `undefined` when the account was created from a safe address.
+     *
+     * @protected
+     * @type {string | undefined}
+     */
     this._ownerAccountAddress = pinnedSafeAddress === undefined ? address : undefined
 
     /**
@@ -263,9 +269,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @param {string} owner - The safe owner's address.
    * @param {Pick<EvmErc4337WalletConfig, 'safeModulesVersion' | 'onChainIdentifier'>} config - The safe configuration.
+   * @throws {ValueError} If `owner` is not a well-formed evm address.
    * @returns {string} The Safe address.
    */
   static predictSafeAddress (owner, config) {
+    if (!isAddress(owner)) {
+      throw new ValueError(`Invalid owner address: '${owner}'.`)
+    }
+
     const overrides = WalletAccountReadOnlyEvmErc4337._getInitCodeOverrides(config)
     return SafeAccount030.createAccountAddress([owner], overrides)
   }
@@ -283,12 +294,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @param {string} safeAddress - The address of an already-deployed safe account. Normalized to its checksummed form.
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
-   * @throws {ConfigurationError} If `safeAddress` is not a well-formed evm address, or if `config.safeModulesVersion` is not in the supported set.
+   * @throws {ValueError} If `safeAddress` is not a well-formed evm address.
+   * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
    * @returns {WalletAccountReadOnlyEvmErc4337} The read-only account.
    */
   static fromSafeAddress (safeAddress, config) {
     if (!isAddress(safeAddress)) {
-      throw new ConfigurationError(`Invalid safe address: ${safeAddress}`)
+      throw new ValueError(`Invalid safe address: '${safeAddress}'.`)
     }
 
     return new WalletAccountReadOnlyEvmErc4337(undefined, { ...config, [PINNED_SAFE_ADDRESS]: getAddress(safeAddress) })

@@ -43,11 +43,33 @@ console.log('Smart account address:', address)
 wallet.dispose()
 ```
 
+### Authenticated bundlers and paymasters
+
+Some providers require an API key sent as an HTTP header. Pass `bundlerHeaders` and/or
+`paymasterHeaders` to attach headers to every request to those services:
+
+```javascript
+const wallet = new WalletManagerEvmErc4337(seedPhrase, {
+  chainId: 11155111,
+  provider: 'https://sepolia.drpc.org',
+  bundlerUrl: 'https://bundler.example.com/rpc',
+  bundlerHeaders: { Authorization: 'Bearer YOUR_KEY' },
+  safeModulesVersion: '0.3.0',
+  isSponsored: true,
+  paymasterUrl: 'https://paymaster.example.com/rpc',
+  paymasterHeaders: { Authorization: 'Bearer YOUR_KEY' },
+})
+```
+
+Both fields are optional. When omitted, requests are sent without extra headers, so providers
+that authenticate via the URL (e.g. an `apikey` query parameter) keep working unchanged.
+
 ## Key Capabilities
 
 - **ERC-4337 Account Abstraction**: Full implementation of the ERC-4337 standard
 - **Multiple Gas Payment Modes**: Pay fees with native coins, ERC-20 tokens via paymaster, or sponsored transactions
 - **UserOperation Management**: Create and send UserOperations through bundlers
+- **Authenticated Bundlers & Paymasters**: Attach custom HTTP headers (e.g. `Authorization`) to bundler and paymaster requests
 - **BIP-44 Derivation Paths**: Standard Ethereum derivation (m/44'/60')
 - **Multi-Account Management**: Derive multiple smart accounts from a single seed phrase
 - **ERC-20 Token Support**: Query balances and transfer tokens via UserOperations

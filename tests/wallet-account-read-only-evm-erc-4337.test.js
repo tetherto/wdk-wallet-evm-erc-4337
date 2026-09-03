@@ -343,7 +343,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(createPaymasterUserOperationMock).toHaveBeenCalledWith(
           SafeAccountMock.mock.results[0].value,
           { ...DUMMY_USER_OP },
-          PAYMASTER_TOKEN_CONFIG.bundlerUrl,
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, {}),
           { token: TOKEN_ADDRESS },
           { entrypoint: actualAk.ENTRYPOINT_V7 }
         )
@@ -385,7 +385,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(createUserOperationMock).toHaveBeenCalledWith(
           [{ to: SPENDER, value: 1n, data: '0x' }],
           EIP1193_PROVIDER,
-          NATIVE_COINS_CONFIG.bundlerUrl,
+          new actualAk.HttpTransport(NATIVE_COINS_CONFIG.bundlerUrl, {}),
           {}
         )
         expect(createPaymasterUserOperationMock).not.toHaveBeenCalled()
@@ -403,7 +403,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(createPaymasterUserOperationMock).toHaveBeenCalledWith(
           SafeAccountMock.mock.results[0].value,
           { ...DUMMY_USER_OP },
-          PAYMASTER_TOKEN_CONFIG.bundlerUrl,
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, {}),
           { token: TOKEN_ADDRESS },
           { entrypoint: actualAk.ENTRYPOINT_V7, callGasLimit: 111_111n }
         )
@@ -497,6 +497,71 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         const { fee } = await pmAccount.quoteSendTransaction(TRANSACTION)
 
         expect(fee).toBe(600_000n)
+      })
+    })
+
+    describe('auth headers', () => {
+      const TRANSACTION = { to: SPENDER, value: 1, data: '0x' }
+      const BUNDLER_HEADERS = { Authorization: 'Bearer bundler-key' }
+      const PAYMASTER_HEADERS = { Authorization: 'Bearer paymaster-key' }
+      const ROTATED_HEADERS = { Authorization: 'Bearer rotated-key' }
+
+      beforeEach(() => {
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_USER_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+      })
+
+      test('should send each service its own headers when both are configured', async () => {
+        const pmAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, {
+          ...PAYMASTER_TOKEN_CONFIG,
+          bundlerHeaders: BUNDLER_HEADERS,
+          paymasterHeaders: PAYMASTER_HEADERS
+        })
+
+        const { fee } = await pmAccount.quoteSendTransaction(TRANSACTION)
+
+        expect(fee).toBe(600_000n)
+        expect(Erc7677PaymasterMock).toHaveBeenCalledTimes(1)
+        const [paymasterTransport] = Erc7677PaymasterMock.mock.calls[0]
+        expect(paymasterTransport).toBeInstanceOf(actualAk.HttpTransport)
+        expect(paymasterTransport.url).toBe(PAYMASTER_TOKEN_CONFIG.paymasterUrl)
+        expect(paymasterTransport.options).toEqual({ headers: PAYMASTER_HEADERS })
+        expect(createPaymasterUserOperationMock).toHaveBeenCalledWith(
+          SafeAccountMock.mock.results[0].value,
+          { ...DUMMY_USER_OP },
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, { headers: BUNDLER_HEADERS }),
+          { token: TOKEN_ADDRESS },
+          { entrypoint: actualAk.ENTRYPOINT_V7 }
+        )
+      })
+
+      test('should create the paymaster transport without headers when paymasterHeaders is not configured', async () => {
+        const pmAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, PAYMASTER_TOKEN_CONFIG)
+
+        await pmAccount.quoteSendTransaction(TRANSACTION)
+
+        expect(Erc7677PaymasterMock).toHaveBeenCalledTimes(1)
+        const [paymasterTransport] = Erc7677PaymasterMock.mock.calls[0]
+        expect(paymasterTransport).toBeInstanceOf(actualAk.HttpTransport)
+        expect(paymasterTransport.options).toEqual({})
+      })
+
+      test('should create a separate paymaster client when a per-call override changes the headers', async () => {
+        const pmAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, {
+          ...PAYMASTER_TOKEN_CONFIG,
+          paymasterHeaders: PAYMASTER_HEADERS
+        })
+
+        await pmAccount.quoteSendTransaction(TRANSACTION)
+        await pmAccount.quoteSendTransaction(TRANSACTION, { paymasterHeaders: ROTATED_HEADERS })
+        // A repeat with the original headers must reuse the client cached by the first call.
+        await pmAccount.quoteSendTransaction(TRANSACTION)
+
+        expect(Erc7677PaymasterMock).toHaveBeenCalledTimes(2)
+        expect(Erc7677PaymasterMock.mock.calls[0][0].options).toEqual({ headers: PAYMASTER_HEADERS })
+        expect(Erc7677PaymasterMock.mock.calls[1][0].options).toEqual({ headers: ROTATED_HEADERS })
       })
     })
 

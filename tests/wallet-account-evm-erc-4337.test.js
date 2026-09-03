@@ -247,7 +247,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(createPaymasterUserOperationMock).toHaveBeenCalledWith(
           SafeAccountMock.mock.results[0].value,
           { ...DUMMY_USER_OP },
-          PAYMASTER_TOKEN_CONFIG.bundlerUrl,
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, {}),
           { token: USDT_MAINNET_ADDRESS },
           { entrypoint: actualAk.ENTRYPOINT_V7 }
         )
@@ -726,6 +726,41 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         await expect(promise).rejects.toThrow(ProviderRequiredError)
         await expect(promise).rejects.toThrow('The wallet must be connected to a provider to approve funds.')
+      })
+    })
+
+    describe('bundler auth headers', () => {
+      const BUNDLER_HEADERS = { Authorization: 'Bearer bundler-key' }
+
+      test('should wrap the bundler url in a transport carrying the configured headers', async () => {
+        getUserOperationReceiptMock.mockResolvedValue(null)
+
+        const headersAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", {
+          ...SPONSORED_CONFIG,
+          bundlerHeaders: BUNDLER_HEADERS
+        })
+        const receipt = await headersAccount.getUserOperationReceipt(DUMMY_USER_OP_HASH)
+        headersAccount.dispose()
+
+        expect(receipt).toBe(null)
+        expect(BundlerMock).toHaveBeenCalledTimes(1)
+        const [transport] = BundlerMock.mock.calls[0]
+        expect(transport).toBeInstanceOf(actualAk.HttpTransport)
+        expect(transport.url).toBe(SPONSORED_CONFIG.bundlerUrl)
+        expect(transport.options).toEqual({ headers: BUNDLER_HEADERS })
+        expect(getUserOperationReceiptMock).toHaveBeenCalledWith(DUMMY_USER_OP_HASH)
+      })
+
+      test('should create the bundler transport without headers when bundlerHeaders is not configured', async () => {
+        getUserOperationReceiptMock.mockResolvedValue(null)
+
+        await account.getUserOperationReceipt(DUMMY_USER_OP_HASH)
+
+        expect(BundlerMock).toHaveBeenCalledTimes(1)
+        const [transport] = BundlerMock.mock.calls[0]
+        expect(transport).toBeInstanceOf(actualAk.HttpTransport)
+        expect(transport.url).toBe(SPONSORED_CONFIG.bundlerUrl)
+        expect(transport.options).toEqual({})
       })
     })
 

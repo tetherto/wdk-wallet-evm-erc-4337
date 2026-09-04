@@ -6,9 +6,25 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @param {string} owner - The safe owner's address.
      * @param {Pick<EvmErc4337WalletConfig, 'safeModulesVersion' | 'onChainIdentifier'>} config - The safe configuration.
+     * @throws {ValueError} If `owner` is not a well-formed evm address.
      * @returns {string} The Safe address.
      */
     static predictSafeAddress(owner: string, config: Pick<EvmErc4337WalletConfig, "safeModulesVersion" | "onChainIdentifier">): string;
+    /**
+     * Creates a read-only account for a safe whose address is already known.
+     *
+     * The address is used as the account's own address, so balances, allowances and quotes resolve against that
+     * safe. Its owner is unknown to the account: {@link verify} and {@link verifyTypedData} throw, and the safe must
+     * already be deployed for {@link quoteSendTransaction} and {@link quoteTransfer}.
+     *
+     * @param {string} safeAddress - The safe's evm address. Normalized to its checksummed form.
+     * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
+     * @throws {ValueError} If `safeAddress` is not a well-formed evm address.
+     * @throws {ValueError} If the `provider` option is set to an empty array.
+     * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
+     * @returns {WalletAccountReadOnlyEvmErc4337} A read-only account whose address is `safeAddress`.
+     */
+    static fromSafeAddress(safeAddress: string, config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): WalletAccountReadOnlyEvmErc4337;
     /**
      * Builds the init code overrides from the wallet configuration.
      *
@@ -20,8 +36,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     /**
      * Creates a new read-only evm [erc-4337](https://www.erc4337.io/docs) wallet account.
      *
-     * @param {string} address - The evm account's address.
+     * `address` is the safe owner's address; the account's own address is the counterfactual safe address derived
+     * from it. To read a safe whose address is already known, use {@link fromSafeAddress}.
+     *
+     * @param {string} address - The safe owner's evm address.
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
+     * @throws {ValueError} If `address` is not a well-formed evm address.
+     * @throws {ValueError} If the `provider` option is set to an empty array.
      * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
      */
     constructor(address: string, config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">);
@@ -58,8 +79,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @type {bigint | undefined}
      */
     protected _chainId: bigint | undefined;
-    /** @private */
-    private _ownerAccountAddress;
+    /**
+     * The safe owner's address, or `undefined` when the account was created from a safe address.
+     *
+     * @protected
+     * @type {string | undefined}
+     */
+    protected _ownerAccountAddress: string | undefined;
     /**
      * Returns the account's eth balance.
      *
@@ -102,6 +128,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
      * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
      * @throws {TransactionError} If the token paymaster reports AA50 (account does not hold the paymaster token).
+     * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
      */
     quoteSendTransaction(tx: EvmErc4337Transaction | EvmErc4337Transaction[], config?: Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>): Promise<Omit<TransactionResult, "hash">>;
     /**
@@ -117,6 +144,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
      * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
      * @throws {TransactionError} If the token paymaster reports AA50 (account does not hold the paymaster token).
+     * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
      */
     quoteTransfer(options: TransferOptions, config?: Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>, txOverrides?: EvmErc4337GasOverrides): Promise<Omit<TransferResult, "hash">>;
     /**
@@ -171,6 +199,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @param {string} message - The original message.
      * @param {string} signature - The signature to verify.
+     * @throws {UnsupportedOperationError} If the account was created from a safe address, whose owner is unknown.
      * @returns {Promise<boolean>} True if the signature is valid.
      */
     verify(message: string, signature: string): Promise<boolean>;
@@ -179,6 +208,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @param {TypedData} typedData - The typed data to verify.
      * @param {string} signature - The signature to verify.
+     * @throws {UnsupportedOperationError} If the account was created from a safe address, whose owner is unknown.
      * @returns {Promise<boolean>} True if the signature is valid.
      */
     verifyTypedData(typedData: TypedData, signature: string): Promise<boolean>;
@@ -196,6 +226,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * @protected
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The wallet configuration. Defaults to the instance configuration.
+     * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
      * @returns {Promise<SafeAccountV0_3_0>} The safe account instance.
      */
     protected _getSmartAccount(config?: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): Promise<import('abstractionkit').SafeAccountV0_3_0>;
@@ -240,6 +271,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The wallet configuration.
      * @param {EvmErc4337GasOverrides & Nonce} [txOverrides] - Optional UserOperationV7 gas overrides extracted from the input transaction(s), plus an optional explicit lane `nonce`.
      * @returns {Promise<BuiltUserOperation>} The built operation, signing context, and (in token mode) the paymaster quote.
+     * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
      */
     protected _buildUserOperation(calls: import('abstractionkit').MetaTransaction[], config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">, txOverrides?: EvmErc4337GasOverrides & Nonce): Promise<BuiltUserOperation>;
     /**

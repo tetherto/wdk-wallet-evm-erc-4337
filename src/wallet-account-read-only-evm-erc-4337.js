@@ -14,9 +14,9 @@
 
 'use strict'
 
-import { isHexString, JsonRpcProvider } from 'ethers'
+import { getAddress, isAddress, isHexString, JsonRpcProvider } from 'ethers'
 
-import { WalletAccountReadOnly, NoSuchElementError, TransactionError, TransactionErrorReason, ValueError } from '@tetherto/wdk-wallet'
+import { WalletAccountReadOnly, NoSuchElementError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
 import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
@@ -180,12 +180,19 @@ const SAFE_MODULES_MAP = {
   }
 }
 
+const PINNED_SAFE_ADDRESS = Symbol('pinnedSafeAddress')
+
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
   /**
    * Creates a new read-only evm [erc-4337](https://www.erc4337.io/docs) wallet account.
    *
-   * @param {string} address - The evm account's address.
+   * `address` is the safe owner's address; the account's own address is the counterfactual safe address derived
+   * from it. To read a safe whose address is already known, use {@link fromSafeAddress}.
+   *
+   * @param {string} address - The safe owner's evm address.
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
+   * @throws {ValueError} If `address` is not a well-formed evm address.
+   * @throws {ValueError} If the `provider` option is set to an empty array.
    * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
    */
   constructor (address, config) {
@@ -193,9 +200,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       throw new ConfigurationError(`Unsupported safe modules version: ${config.safeModulesVersion}`)
     }
 
-    const safeAddress = WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config)
+    const { [PINNED_SAFE_ADDRESS]: pinnedSafeAddress, ...unpinnedConfig } = config
+    const [accountConfig, ownerAccountAddress] = pinnedSafeAddress === undefined
+      ? [config, address]
+      : [unpinnedConfig, undefined]
 
-    super(safeAddress)
+    super(pinnedSafeAddress ?? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config))
 
     /**
      * The read-only evm erc-4337 wallet account configuration.
@@ -203,7 +213,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @protected
      * @type {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>}
      */
-    this._config = config
+    this._config = accountConfig
 
     /**
      * Cached AbstractionKit bundler.
@@ -229,8 +239,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     this._paymasters = new Map()
 
-    /** @private */
-    this._ownerAccountAddress = address
+    /**
+     * The safe owner's address, or `undefined` when the account was created from a safe address.
+     *
+     * @protected
+     * @type {string | undefined}
+     */
+    this._ownerAccountAddress = ownerAccountAddress
 
     /**
      * An EIP-1193–compatible provider used to interact with the blockchain.
@@ -257,11 +272,38 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @param {string} owner - The safe owner's address.
    * @param {Pick<EvmErc4337WalletConfig, 'safeModulesVersion' | 'onChainIdentifier'>} config - The safe configuration.
+   * @throws {ValueError} If `owner` is not a well-formed evm address.
    * @returns {string} The Safe address.
    */
   static predictSafeAddress (owner, config) {
+    if (!isAddress(owner)) {
+      throw new ValueError(`Invalid owner address: '${owner}'.`)
+    }
+
     const overrides = WalletAccountReadOnlyEvmErc4337._getInitCodeOverrides(config)
     return SafeAccount030.createAccountAddress([owner], overrides)
+  }
+
+  /**
+   * Creates a read-only account for a safe whose address is already known.
+   *
+   * The address is used as the account's own address, so balances, allowances and quotes resolve against that
+   * safe. Its owner is unknown to the account: {@link verify} and {@link verifyTypedData} throw, and the safe must
+   * already be deployed for {@link quoteSendTransaction} and {@link quoteTransfer}.
+   *
+   * @param {string} safeAddress - The safe's evm address. Normalized to its checksummed form.
+   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
+   * @throws {ValueError} If `safeAddress` is not a well-formed evm address.
+   * @throws {ValueError} If the `provider` option is set to an empty array.
+   * @throws {ConfigurationError} If `config.safeModulesVersion` is not in the supported set.
+   * @returns {WalletAccountReadOnlyEvmErc4337} A read-only account whose address is `safeAddress`.
+   */
+  static fromSafeAddress (safeAddress, config) {
+    if (!isAddress(safeAddress)) {
+      throw new ValueError(`Invalid safe address: '${safeAddress}'.`)
+    }
+
+    return new WalletAccountReadOnlyEvmErc4337(undefined, { ...config, [PINNED_SAFE_ADDRESS]: getAddress(safeAddress) })
   }
 
   /**
@@ -330,6 +372,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
    * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
    * @throws {TransactionError} If the token paymaster reports AA50 (account does not hold the paymaster token).
+   * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
    */
   async quoteSendTransaction (tx, config) {
     const mergedConfig = { ...this._config, ...config }
@@ -364,6 +407,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
    * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
    * @throws {TransactionError} If the token paymaster reports AA50 (account does not hold the paymaster token).
+   * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
    */
   async quoteTransfer (options, config, txOverrides) {
     const baseTx = await WalletAccountReadOnlyEvm._getTransferTransaction(options)
@@ -488,9 +532,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @param {string} message - The original message.
    * @param {string} signature - The signature to verify.
+   * @throws {UnsupportedOperationError} If the account was created from a safe address, whose owner is unknown.
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async verify (message, signature) {
+    if (this._ownerAccountAddress === undefined) {
+      throw new UnsupportedOperationError('verify(message, signature)')
+    }
+
     const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, this._config)
     return await evmReadOnlyAccount.verify(message, signature)
   }
@@ -500,9 +549,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @param {TypedData} typedData - The typed data to verify.
    * @param {string} signature - The signature to verify.
+   * @throws {UnsupportedOperationError} If the account was created from a safe address, whose owner is unknown.
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async verifyTypedData (typedData, signature) {
+    if (this._ownerAccountAddress === undefined) {
+      throw new UnsupportedOperationError('verifyTypedData(typedData, signature)')
+    }
+
     const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, this._config)
 
     return await evmReadOnlyAccount.verifyTypedData(typedData, signature)
@@ -554,6 +608,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    *
    * @protected
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} [config] - The wallet configuration. Defaults to the instance configuration.
+   * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
    * @returns {Promise<SafeAccountV0_3_0>} The safe account instance.
    */
   async _getSmartAccount (config = this._config) {
@@ -565,6 +620,10 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     if (await SafeAccount030.isDeployed(safeAddress, this._provider)) {
       this._deployedSmartAccount = new SafeAccount030(safeAddress, overrides)
       return this._deployedSmartAccount
+    }
+
+    if (this._ownerAccountAddress === undefined) {
+      throw new ConfigurationError(`The safe at '${safeAddress}' is not deployed. Deploying it requires the owner's address, which an account created from a safe address does not have.`)
     }
 
     return SafeAccount030.initializeNewAccount([this._ownerAccountAddress], overrides)
@@ -728,6 +787,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The wallet configuration.
    * @param {EvmErc4337GasOverrides & Nonce} [txOverrides] - Optional UserOperationV7 gas overrides extracted from the input transaction(s), plus an optional explicit lane `nonce`.
    * @returns {Promise<BuiltUserOperation>} The built operation, signing context, and (in token mode) the paymaster quote.
+   * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
    */
   async _buildUserOperation (calls, config, txOverrides = {}) {
     const chainId = await this._getChainId()

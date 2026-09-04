@@ -73,7 +73,6 @@ const { WalletAccountReadOnlyEvmErc4337, ConfigurationError } = await import('..
 
 const OWNER_ADDRESS = '0x405005C7c4422390F4B334F64Cf20E0b767131d0'
 const SAFE_ADDRESS = '0x120Ac3c0B46fBAf2e8452A23BD61a2Da9B139551'
-const EXISTING_SAFE_ADDRESS = '0xFE0847a52f1C75A01B06cFC636c87683E72a6029'
 const SPENDER = '0xa460AEbce0d3A4BecAd8ccf9D6D4861296c503Bd'
 const TOKEN_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
 
@@ -196,6 +195,8 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
       test('should throw if the owner address is not a well-formed evm address', () => {
         expect(() => new WalletAccountReadOnlyEvmErc4337('not-an-address', SPONSORED_CONFIG))
+          .toThrow(expect.objectContaining({ name: 'ValueError' }))
+        expect(() => new WalletAccountReadOnlyEvmErc4337('not-an-address', SPONSORED_CONFIG))
           .toThrow(new ValueError("Invalid owner address: 'not-an-address'."))
       })
 
@@ -206,10 +207,14 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           .toThrow("The 'provider' option cannot be set to an empty list.")
       })
 
-      test('should pass the caller\'s configuration object through unchanged', async () => {
-        await account.getBalance()
+      test('should reflect changes made to the configuration object after construction', async () => {
+        const config = { ...SPONSORED_CONFIG }
+        const mutableAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, config)
+        config.bundlerUrl = 'https://dummy-other-bundler.url/'
 
-        expect(WalletAccountReadOnlyEvmMock.mock.calls[0][1]).toBe(SPONSORED_CONFIG)
+        await mutableAccount.getBalance()
+
+        expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(SAFE_ADDRESS, { ...SPONSORED_CONFIG, bundlerUrl: 'https://dummy-other-bundler.url/' })
       })
     })
 
@@ -265,18 +270,21 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
       test('should throw if the owner address is not a well-formed evm address', () => {
         expect(() => WalletAccountReadOnlyEvmErc4337.predictSafeAddress('not-an-address', { safeModulesVersion: '0.3.0' }))
+          .toThrow(expect.objectContaining({ name: 'ValueError' }))
+        expect(() => WalletAccountReadOnlyEvmErc4337.predictSafeAddress('not-an-address', { safeModulesVersion: '0.3.0' }))
           .toThrow(new ValueError("Invalid owner address: 'not-an-address'."))
       })
     })
 
     describe('fromSafeAddress', () => {
-      test('should use the given safe address without deriving one from it', async () => {
+      const EXISTING_SAFE_ADDRESS = '0xFE0847a52f1C75A01B06cFC636c87683E72a6029'
+
+      test('should use the given safe address as the account address', async () => {
         const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
 
         const address = await safeAccount.getAddress()
 
         expect(address).toBe(EXISTING_SAFE_ADDRESS)
-        expect(address).not.toBe(WalletAccountReadOnlyEvmErc4337.predictSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG))
       })
 
       test('should read the balance of the given safe address', async () => {
@@ -287,7 +295,6 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         expect(balance).toBe(DUMMY_BALANCE)
         expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
-        expect(Object.getOwnPropertySymbols(WalletAccountReadOnlyEvmMock.mock.calls[0][1])).toEqual([])
       })
 
       test('should quote against the given safe address', async () => {
@@ -318,12 +325,32 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
       test('should throw if the safe address is not a well-formed evm address', () => {
         expect(() => WalletAccountReadOnlyEvmErc4337.fromSafeAddress('not-an-address', SPONSORED_CONFIG))
+          .toThrow(expect.objectContaining({ name: 'ValueError' }))
+        expect(() => WalletAccountReadOnlyEvmErc4337.fromSafeAddress('not-an-address', SPONSORED_CONFIG))
           .toThrow(new ValueError("Invalid safe address: 'not-an-address'."))
+      })
+
+      test('should throw if the safe address has an invalid checksum', () => {
+        const BAD_CHECKSUM_ADDRESS = '0xFE0847A52f1C75A01B06cFC636c87683E72a6029'
+
+        expect(() => WalletAccountReadOnlyEvmErc4337.fromSafeAddress(BAD_CHECKSUM_ADDRESS, SPONSORED_CONFIG))
+          .toThrow(expect.objectContaining({ name: 'ValueError' }))
+        expect(() => WalletAccountReadOnlyEvmErc4337.fromSafeAddress(BAD_CHECKSUM_ADDRESS, SPONSORED_CONFIG))
+          .toThrow(new ValueError(`Invalid safe address: '${BAD_CHECKSUM_ADDRESS}'.`))
+      })
+
+      test('should throw if the provider is an empty list', () => {
+        expect(() => WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, { ...SPONSORED_CONFIG, provider: [] }))
+          .toThrow(expect.objectContaining({ name: 'ValueError' }))
+        expect(() => WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, { ...SPONSORED_CONFIG, provider: [] }))
+          .toThrow("The 'provider' option cannot be set to an empty list.")
       })
 
       test('should throw when verifying a message because the safe owner is unknown', async () => {
         const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
 
+        await expect(safeAccount.verify('Dummy message to sign.', '0xdead'))
+          .rejects.toThrow(expect.objectContaining({ name: 'UnsupportedOperationError' }))
         await expect(safeAccount.verify('Dummy message to sign.', '0xdead'))
           .rejects.toThrow(new UnsupportedOperationError('verify(message, signature)'))
         expect(verifyMock).not.toHaveBeenCalled()
@@ -332,6 +359,8 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
       test('should throw when verifying typed data because the safe owner is unknown', async () => {
         const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
 
+        await expect(safeAccount.verifyTypedData({ domain: {}, types: {}, message: {} }, '0xdead'))
+          .rejects.toThrow(expect.objectContaining({ name: 'UnsupportedOperationError' }))
         await expect(safeAccount.verifyTypedData({ domain: {}, types: {}, message: {} }, '0xdead'))
           .rejects.toThrow(new UnsupportedOperationError('verifyTypedData(typedData, signature)'))
         expect(verifyTypedDataMock).not.toHaveBeenCalled()
@@ -342,6 +371,8 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, PAYMASTER_TOKEN_CONFIG)
 
+        await expect(safeAccount.quoteSendTransaction({ to: SPENDER, value: 1, data: '0x' }))
+          .rejects.toThrow(expect.objectContaining({ name: 'ConfigurationError' }))
         await expect(safeAccount.quoteSendTransaction({ to: SPENDER, value: 1, data: '0x' }))
           .rejects.toThrow(new ConfigurationError(`The safe at '${EXISTING_SAFE_ADDRESS}' is not deployed. Deploying it requires the owner's address, which an account created from a safe address does not have.`))
       })

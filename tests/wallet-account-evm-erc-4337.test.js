@@ -102,6 +102,8 @@ const DUMMY_USER_OP = {
 
 const GAS_OVERRIDES = {
   callGasLimit: 111_111n,
+  verificationGasLimit: 222_222n,
+  preVerificationGas: 33_333n,
   maxFeePerGas: 2_000_000_000n,
   maxPriorityFeePerGas: 1_500_000_000n
 }
@@ -639,8 +641,10 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         const contract = new Contract(USDT_MAINNET_ADDRESS, abi)
         const expectedData = contract.interface.encodeFunctionData('transfer', [TRANSFER.recipient, TRANSFER.amount])
 
-        await account.transfer({ ...TRANSFER, ...GAS_OVERRIDES })
+        const { hash, fee } = await account.transfer({ ...TRANSFER, ...GAS_OVERRIDES })
 
+        expect(hash).toBe(DUMMY_USER_OP_HASH)
+        expect(fee).toBe(0n)
         expect(createUserOperationMock).toHaveBeenCalledWith(
           [{ to: USDT_MAINNET_ADDRESS, value: 0n, data: expectedData }],
           EIP1193_PROVIDER,
@@ -748,8 +752,10 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         const contract = new Contract(USDT_MAINNET_ADDRESS, abi)
         const expectedData = contract.interface.encodeFunctionData('approve', [SPENDER, AMOUNT])
 
-        await account.approve({ token: USDT_MAINNET_ADDRESS, spender: SPENDER, amount: AMOUNT, ...GAS_OVERRIDES })
+        const { hash, fee } = await account.approve({ token: USDT_MAINNET_ADDRESS, spender: SPENDER, amount: AMOUNT, ...GAS_OVERRIDES })
 
+        expect(hash).toBe(DUMMY_USER_OP_HASH)
+        expect(fee).toBe(0n)
         expect(createUserOperationMock).toHaveBeenCalledWith(
           [{ to: USDT_MAINNET_ADDRESS, value: 0n, data: expectedData }],
           EIP1193_PROVIDER,

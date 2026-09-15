@@ -128,12 +128,6 @@ const DUMMY_USER_OP = {
   signature: '0x'
 }
 
-const GAS_OVERRIDES = {
-  callGasLimit: 111_111n,
-  maxFeePerGas: 2_000_000_000n,
-  maxPriorityFeePerGas: 1_500_000_000n
-}
-
 const EIP1193_PROVIDER = {
   request: jest.fn(async ({ method }) => {
     if (method === 'eth_chainId') return '0x1'
@@ -743,6 +737,14 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
       })
 
       test('should forward the gas overrides set on the transfer options to the user operation', async () => {
+        const GAS_OVERRIDES = {
+          callGasLimit: 111_111n,
+          verificationGasLimit: 222_222n,
+          preVerificationGas: 33_333n,
+          maxFeePerGas: 2_000_000_000n,
+          maxPriorityFeePerGas: 1_500_000_000n
+        }
+
         createPaymasterUserOperationMock.mockResolvedValue({
           userOperation: { ...DUMMY_USER_OP },
           tokenQuote: { tokenCost: 500_000n }
@@ -753,8 +755,9 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         const expectedData = contract.interface.encodeFunctionData('transfer', [SPENDER, TRANSFER.amount])
 
         const pmAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, PAYMASTER_TOKEN_CONFIG)
-        await pmAccount.quoteTransfer({ ...TRANSFER, ...GAS_OVERRIDES })
+        const { fee } = await pmAccount.quoteTransfer({ ...TRANSFER, ...GAS_OVERRIDES })
 
+        expect(fee).toBe(600_000n)
         expect(createUserOperationMock).toHaveBeenCalledWith(
           [{ to: TOKEN_ADDRESS, value: 0n, data: expectedData }],
           EIP1193_PROVIDER,

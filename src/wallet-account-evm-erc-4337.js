@@ -366,8 +366,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     const { isSponsored, transferMaxFee } = mergedConfig
 
-    const baseTx = await WalletAccountEvm._getTransferTransaction(options)
-    const tx = { ...baseTx, ...WalletAccountReadOnlyEvmErc4337._extractGasOverrides(options) }
+    const tx = await WalletAccountReadOnlyEvmErc4337._getTransferTransaction(options)
 
     const txs = [tx]
     const prepared = await this._prepareForSend(tx, txs, mergedConfig)

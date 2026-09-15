@@ -286,6 +286,15 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     protected _buildUserOperation(calls: import('abstractionkit').MetaTransaction[], config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">, txOverrides?: EvmErc4337GasOverrides & Nonce): Promise<BuiltUserOperation>;
     /**
+     * Returns an evm transaction to execute the given token transfer, carrying any UserOperationV7
+     * gas overrides set on the options.
+     *
+     * @protected
+     * @param {EvmErc4337TransferOptions} options - The transfer's options.
+     * @returns {Promise<EvmErc4337Transaction>} The evm transaction.
+     */
+    protected static _getTransferTransaction(options: EvmErc4337TransferOptions): Promise<EvmErc4337Transaction>;
+    /**
      * Extracts the optional UserOperationV7 gas overrides from a transaction or an options object.
      *
      * Only the fields actually consumed by AbstractionKit's `CreateUserOperationOverrides`

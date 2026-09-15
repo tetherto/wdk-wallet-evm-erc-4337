@@ -420,12 +420,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
    */
   async quoteTransfer (options, config) {
-    const baseTx = await WalletAccountReadOnlyEvm._getTransferTransaction(options)
-    const tx = { ...baseTx, ...WalletAccountReadOnlyEvmErc4337._extractGasOverrides(options) }
+    const tx = await WalletAccountReadOnlyEvmErc4337._getTransferTransaction(options)
 
-    const result = await this.quoteSendTransaction(tx, config)
-
-    return result
+    return await this.quoteSendTransaction(tx, config)
   }
 
   /**
@@ -846,6 +843,20 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       mode, smartAccount, userOp: baseUserOp, config, chainId, txOverrides
     })
     return { userOp, smartAccount, mode, chainId, tokenQuote }
+  }
+
+  /**
+   * Returns an evm transaction to execute the given token transfer, carrying any UserOperationV7
+   * gas overrides set on the options.
+   *
+   * @protected
+   * @param {EvmErc4337TransferOptions} options - The transfer's options.
+   * @returns {Promise<EvmErc4337Transaction>} The evm transaction.
+   */
+  static async _getTransferTransaction (options) {
+    const tx = await WalletAccountReadOnlyEvm._getTransferTransaction(options)
+
+    return { ...tx, ...WalletAccountReadOnlyEvmErc4337._extractGasOverrides(options) }
   }
 
   /**

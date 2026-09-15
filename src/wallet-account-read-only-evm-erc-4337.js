@@ -111,8 +111,7 @@ export const FEE_TOLERANCE_COEFFICIENT = 120n
  */
 
 /**
- * The options of a token transfer, extended with optional UserOperationV7 gas overrides that are
- * applied to the underlying transaction.
+ * The options of a token transfer, extended with the optional UserOperationV7 gas overrides.
  *
  * @typedef {TransferOptions & EvmErc4337GasOverrides} EvmErc4337TransferOptions
  */
@@ -850,8 +849,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * gas overrides set on the options.
    *
    * @protected
-   * @param {EvmErc4337TransferOptions} options - The transfer's options.
-   * @returns {Promise<EvmErc4337Transaction>} The evm transaction.
+   * @param {EvmErc4337TransferOptions} options - The transfer's options, including any gas/fee overrides to carry onto the transaction.
+   * @returns {Promise<EvmErc4337Transaction>} The ERC-20 transfer call as an evm transaction, with the options' gas overrides applied.
    */
   static async _getTransferTransaction (options) {
     const tx = await WalletAccountReadOnlyEvm._getTransferTransaction(options)

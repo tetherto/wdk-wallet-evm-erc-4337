@@ -182,8 +182,7 @@ export type EvmErc4337WalletSponsorshipPolicyConfig = import("./wallet-account-r
 export type TypedData = import("./wallet-account-read-only-evm-erc-4337.js").TypedData;
 export type EvmErc4337WalletNativeCoinsConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletNativeCoinsConfig;
 /**
- * The options of a token approval, extended with optional UserOperationV7 gas overrides that are
- * applied to the underlying transaction.
+ * The options of a token approval, extended with the optional UserOperationV7 gas overrides.
  */
 export type EvmErc4337ApproveOptions = ApproveOptions & EvmErc4337GasOverrides;
 export type UserOperationV7 = import("abstractionkit").UserOperationV7;

@@ -55,8 +55,7 @@ import WalletAccountReadOnlyEvmErc4337, { FEE_TOLERANCE_COEFFICIENT } from './wa
 /** @typedef {import('./wallet-account-read-only-evm-erc-4337.js').EvmErc4337WalletNativeCoinsConfig} EvmErc4337WalletNativeCoinsConfig */
 
 /**
- * The options of a token approval, extended with optional UserOperationV7 gas overrides that are
- * applied to the underlying transaction.
+ * The options of a token approval, extended with the optional UserOperationV7 gas overrides.
  *
  * @typedef {ApproveOptions & EvmErc4337GasOverrides} EvmErc4337ApproveOptions
  */

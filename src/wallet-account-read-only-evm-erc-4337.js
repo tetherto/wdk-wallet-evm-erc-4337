@@ -111,6 +111,13 @@ export const FEE_TOLERANCE_COEFFICIENT = 120n
  */
 
 /**
+ * The options of a token transfer, extended with optional UserOperationV7 gas overrides that are
+ * applied to the underlying transaction.
+ *
+ * @typedef {TransferOptions & EvmErc4337GasOverrides} EvmErc4337TransferOptions
+ */
+
+/**
  * A single explicit UserOperationV7 `nonce`, combined with `EvmErc4337GasOverrides` for the build
  * step to place the operation in a specific two-dimensional nonce lane. The `nonce` is derived
  * internally from the account's `parallel`/`nonceKey` configuration, never from user-supplied
@@ -404,18 +411,17 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * The result is cached internally for up to 2 minutes. If `transfer` is called with the
    * same transaction within that window, the cached fee is reused without an additional RPC round-trip.
    *
-   * @param {TransferOptions} options - The transfer's options.
+   * @param {EvmErc4337TransferOptions} options - The transfer's options, including any UserOperationV7 gas/fee overrides to apply to the underlying transaction.
    * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
-   * @param {EvmErc4337GasOverrides} [txOverrides] - If set, applies these UserOperationV7 gas/fee overrides to the underlying transaction.
    * @returns {Promise<Omit<TransferResult, 'hash'>>} The transfer's quotes.
    * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
    * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
    * @throws {TransactionError} If the token paymaster reports AA50 (account does not hold the paymaster token).
    * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
    */
-  async quoteTransfer (options, config, txOverrides) {
+  async quoteTransfer (options, config) {
     const baseTx = await WalletAccountReadOnlyEvm._getTransferTransaction(options)
-    const tx = { ...baseTx, ...txOverrides }
+    const tx = { ...baseTx, ...WalletAccountReadOnlyEvmErc4337._extractGasOverrides(options) }
 
     const result = await this.quoteSendTransaction(tx, config)
 
@@ -843,22 +849,22 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Extracts the optional UserOperationV7 gas overrides from a single transaction.
+   * Extracts the optional UserOperationV7 gas overrides from a transaction or an options object.
    *
    * Only the fields actually consumed by AbstractionKit's `CreateUserOperationOverrides`
    * are picked. Numeric values are coerced to bigint.
    *
    * @protected
-   * @param {EvmErc4337Transaction} [tx] - The transaction to read overrides from.
-   * @returns {EvmErc4337GasOverrides} The overrides object (empty if `tx` is falsy or has no override fields).
+   * @param {EvmErc4337GasOverrides} [source] - The transaction or options object to read overrides from.
+   * @returns {EvmErc4337GasOverrides} The overrides object (empty if `source` is falsy or has no override fields).
    */
-  static _extractGasOverrides (tx) {
+  static _extractGasOverrides (source) {
     const overrides = {}
-    if (!tx) return overrides
+    if (!source) return overrides
 
     const fields = ['callGasLimit', 'verificationGasLimit', 'preVerificationGas', 'maxFeePerGas', 'maxPriorityFeePerGas']
     for (const field of fields) {
-      if (tx[field] !== undefined) overrides[field] = BigInt(tx[field])
+      if (source[field] !== undefined) overrides[field] = BigInt(source[field])
     }
 
     return overrides

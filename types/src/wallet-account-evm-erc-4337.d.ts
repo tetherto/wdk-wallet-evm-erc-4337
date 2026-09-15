@@ -82,13 +82,12 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     /**
      * Approves a specific amount of tokens to a spender.
      *
-     * @param {ApproveOptions} options - The approve options.
-     * @param {EvmErc4337GasOverrides} [txOverrides] - If set, applies these UserOperationV7 gas/fee overrides to the underlying transaction.
+     * @param {EvmErc4337ApproveOptions} options - The approve options, including any UserOperationV7 gas/fee overrides to apply to the underlying transaction.
      * @returns {Promise<TransactionResult>} - The transaction's result.
      * @throws {ProviderRequiredError} - If the wallet is not connected to a provider.
      * @throws {ValueError} - If trying to approve usdts on ethereum with allowance not equal to zero (due to the usdt allowance reset requirement).
      */
-    approve(options: ApproveOptions, txOverrides?: EvmErc4337GasOverrides): Promise<TransactionResult>;
+    approve(options: EvmErc4337ApproveOptions): Promise<TransactionResult>;
     /**
      * Quotes the costs of a send transaction operation.
      *
@@ -130,9 +129,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      *
      * If the transaction is not sponsored, it also estimates the transfer's costs and checks them against the transfer max. fee option.
      *
-     * @param {TransferOptions} options - The transfer's options.
+     * @param {EvmErc4337TransferOptions} options - The transfer's options, including any UserOperationV7 gas/fee overrides to apply to the underlying transaction.
      * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
-     * @param {EvmErc4337GasOverrides} [txOverrides] - If set, applies these UserOperationV7 gas/fee overrides to the underlying transaction.
      * @returns {Promise<TransferResult>} The transfer's result.
      * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
      * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
@@ -140,7 +138,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @throws {ValueError} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
      * @throws {TransactionError} If the paymaster reports AA50 (the account cannot repay the paymaster).
      */
-    transfer(options: TransferOptions, config?: Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>, txOverrides?: EvmErc4337GasOverrides): Promise<TransferResult>;
+    transfer(options: EvmErc4337TransferOptions, config?: Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>): Promise<TransferResult>;
     /**
      * Returns a read-only copy of the account.
      *
@@ -174,8 +172,8 @@ export type IWalletAccount<TSignedTransaction> = import("@tetherto/wdk-wallet").
 export type KeyPair = import("@tetherto/wdk-wallet-evm").KeyPair;
 export type EvmErc4337Transaction = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337Transaction;
 export type EvmErc4337GasOverrides = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337GasOverrides;
+export type EvmErc4337TransferOptions = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337TransferOptions;
 export type TransactionResult = import("@tetherto/wdk-wallet-evm").TransactionResult;
-export type TransferOptions = import("@tetherto/wdk-wallet-evm").TransferOptions;
 export type TransferResult = import("@tetherto/wdk-wallet-evm").TransferResult;
 export type ApproveOptions = import("@tetherto/wdk-wallet-evm").ApproveOptions;
 export type EvmErc4337WalletConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletConfig;
@@ -183,6 +181,11 @@ export type EvmErc4337WalletPaymasterTokenConfig = import("./wallet-account-read
 export type EvmErc4337WalletSponsorshipPolicyConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletSponsorshipPolicyConfig;
 export type TypedData = import("./wallet-account-read-only-evm-erc-4337.js").TypedData;
 export type EvmErc4337WalletNativeCoinsConfig = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337WalletNativeCoinsConfig;
+/**
+ * The options of a token approval, extended with optional UserOperationV7 gas overrides that are
+ * applied to the underlying transaction.
+ */
+export type EvmErc4337ApproveOptions = ApproveOptions & EvmErc4337GasOverrides;
 export type UserOperationV7 = import("abstractionkit").UserOperationV7;
 export type SafeAccountV0_3_0 = import("abstractionkit").SafeAccountV0_3_0;
 import WalletAccountReadOnlyEvmErc4337 from './wallet-account-read-only-evm-erc-4337.js';

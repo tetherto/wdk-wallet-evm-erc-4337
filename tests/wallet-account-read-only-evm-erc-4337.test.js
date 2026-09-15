@@ -735,6 +735,37 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           { skipGasEstimation: true }
         )
       })
+
+      test('should forward the gas overrides set on the transfer options to the user operation', async () => {
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_USER_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+
+        const abi = ['function transfer(address to, uint256 amount) returns (bool)']
+        const contract = new Contract(TOKEN_ADDRESS, abi)
+        const expectedData = contract.interface.encodeFunctionData('transfer', [SPENDER, TRANSFER.amount])
+
+        const pmAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, PAYMASTER_TOKEN_CONFIG)
+        await pmAccount.quoteTransfer({
+          ...TRANSFER,
+          callGasLimit: 111_111,
+          maxFeePerGas: 2_000_000_000n,
+          maxPriorityFeePerGas: 1_500_000_000n
+        })
+
+        expect(createUserOperationMock).toHaveBeenCalledWith(
+          [{ to: TOKEN_ADDRESS, value: 0n, data: expectedData }],
+          EIP1193_PROVIDER,
+          undefined,
+          {
+            skipGasEstimation: true,
+            callGasLimit: 111_111n,
+            maxFeePerGas: 2_000_000_000n,
+            maxPriorityFeePerGas: 1_500_000_000n
+          }
+        )
+      })
     })
 
     describe('getTransactionReceipt', () => {

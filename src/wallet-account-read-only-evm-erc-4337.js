@@ -14,7 +14,7 @@
 
 'use strict'
 
-import { getAddress, isAddress, isHexString, JsonRpcProvider } from 'ethers'
+import { getAddress, isAddress, isHexString } from 'ethers'
 
 import { WalletAccountReadOnly, NoSuchElementError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
@@ -35,8 +35,6 @@ import {
 /** @typedef {import('abstractionkit').MetaTransaction} MetaTransaction */
 /** @typedef {import('abstractionkit').SafeAccountV0_3_0} SafeAccountV0_3_0 */
 
-import FailoverProvider from '@tetherto/wdk-failover-provider'
-
 import { ConfigurationError } from './errors.js'
 
 const PaymasterMode = {
@@ -47,6 +45,7 @@ const PaymasterMode = {
 
 export const FEE_TOLERANCE_COEFFICIENT = 120n
 
+/** @typedef {import('ethers').Provider} Provider */
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').TransactionResult} TransactionResult */
@@ -131,7 +130,7 @@ export const FEE_TOLERANCE_COEFFICIENT = 120n
 /**
  * @typedef {Object} EvmErc4337WalletCommonConfig
  * @property {number} chainId - The blockchain's id (e.g., 1 for ethereum).
- * @property {string | Eip1193Provider | Array<string | Eip1193Provider>} provider - The url of the rpc provider, or an instance of a class that implements eip-1193. It's also possible to provide an array of urls or EIP 1193 providers instead. In such case, connection errors will cause the wallet to automatically fallback on the next provider in the list.
+ * @property {string | Provider | Eip1193Provider | Array<string | Provider | Eip1193Provider>} provider - The url of the rpc provider, an already-built ethers `Provider` (reused as-is), or an instance of a class that implements eip-1193. It's also possible to provide an array of these instead. In such case, connection errors will cause the wallet to automatically fallback on the next provider in the list.
  * @property {number} [retries] - If set and if 'provider' is a list of urls or EIP 1193 providers, the number of additional retry attempts after the initial call fails. Total attempts = `1 + retries`. For example, `retries: 3` with 4 providers will try each provider once before throwing. If `retries` exceeds the number of providers, the failover will loop back and retry already-failed providers in round-robin order. Default: 3.
  * @property {string} bundlerUrl - The url of the bundler service.
  * @property {Record<string, string>} [bundlerHeaders] - Optional HTTP headers sent on every request to the bundler (e.g. `{ Authorization: 'Bearer <key>' }`). Use for bundlers that require authentication.
@@ -252,17 +251,23 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     this._ownerAccountAddress = ownerAccountAddress
 
     /**
-     * An EIP-1193–compatible provider used to interact with the blockchain.
-     *
-     * Note: the provider type is restricted to EIP-1193 to ensure compatibility
-     * with Safe4337Pack and to enable the failover mechanism. While RPC URLs
-     * can still be provided in the configuration, they are internally wrapped
-     * into an EIP-1193 provider.
+     * The shared ethers provider used to interact with the blockchain. A single instance is
+     * built here (or reused from the manager) and passed to every nested `WalletAccountReadOnlyEvm`
+     * so accounts do not open their own connection.
      *
      * @protected
-     * @type {Eip1193Provider}
+     * @type {Provider | undefined}
      */
-    this._provider = this._createFailoverProvider(this._config)
+    this._provider = this._buildProvider(this._config)
+
+    /**
+     * The EIP-1193 view of {@link _provider} that abstractionkit (Safe4337Pack) requires. Built
+     * once and backed by the same underlying connection as {@link _provider}.
+     *
+     * @protected
+     * @type {Eip1193Provider | undefined}
+     */
+    this._eip1193Provider = this._buildEip1193Provider(this._config, this._provider)
 
     /** @private */
     this._deployedSmartAccount = undefined
@@ -627,7 +632,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     const overrides = WalletAccountReadOnlyEvmErc4337._getInitCodeOverrides(config)
     const safeAddress = await this.getAddress()
 
-    if (await SafeAccount030.isDeployed(safeAddress, this._provider)) {
+    if (await SafeAccount030.isDeployed(safeAddress, this._eip1193Provider)) {
       this._deployedSmartAccount = new SafeAccount030(safeAddress, overrides)
       return this._deployedSmartAccount
     }
@@ -694,7 +699,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    */
   async _getChainId () {
     if (!this._chainId) {
-      const chainId = BigInt(await this._provider.request({ method: 'eth_chainId' }))
+      const chainId = BigInt(await this._eip1193Provider.request({ method: 'eth_chainId' }))
 
       if (this._config.chainId !== undefined && chainId !== BigInt(this._config.chainId)) {
         throw new ConfigurationError(
@@ -709,50 +714,66 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Wraps a string RPC URL or provider into an EIP-1193 compatible provider.
+   * Adapts an ethers provider (or failover aggregate) to the EIP-1193 interface required by
+   * abstractionkit (Safe4337Pack), without constructing a new provider. Already-EIP-1193 objects
+   * (e.g. a browser wallet or a `BrowserProvider`) are returned as-is; ethers providers are wrapped
+   * so `request` forwards to `send`, reusing the same underlying connection.
    *
    * @protected
-   * @param {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
-   * @returns { Eip1193Provider } A wrapped Eip1193Provider instance.
+   * @param {Provider | Eip1193Provider} provider - The ethers provider (or EIP-1193 provider) to adapt.
+   * @returns {Eip1193Provider} An EIP-1193-compatible provider that reuses the given client.
    */
-  _wrapEip1193Provider (provider) {
-    return typeof provider === 'string'
-      ? {
-          provider: new JsonRpcProvider(provider),
-          request ({ method, params }) {
-            return this.provider.send(method, params ?? [])
-          }
-        }
-      : provider
+  static _asEip1193 (provider) {
+    if (typeof provider.request === 'function') {
+      return provider
+    }
+
+    return {
+      request ({ method, params }) {
+        return provider.send(method, params ?? [])
+      }
+    }
   }
 
   /**
-   * Creates a FailoverProvider from the configured providers. If only one provider is supplied, it is wrapped and returned.
+   * Builds the EIP-1193 view that abstractionkit needs. A caller-supplied EIP-1193 provider is
+   * reused directly (so abstractionkit talks to it without an extra `BrowserProvider` round-trip);
+   * otherwise the shared ethers provider is adapted so `request` forwards to `send`. Both share the
+   * same underlying connection as {@link _provider}.
+   *
+   * @protected
+   * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
+   * @param {Provider} [provider] - The shared ethers provider built from `config`.
+   * @returns {Eip1193Provider | undefined} The EIP-1193 provider, or undefined if none is configured.
+   */
+  _buildEip1193Provider (config, provider) {
+    if (!provider) {
+      return undefined
+    }
+
+    const { provider: configured } = config
+    const source = configured && typeof configured.request === 'function' ? configured : provider
+
+    return WalletAccountReadOnlyEvmErc4337._asEip1193(source)
+  }
+
+  /**
+   * Builds the single shared ethers provider from the configuration. Construction (url ->
+   * `JsonRpcProvider`, EIP-1193 -> `BrowserProvider`, array -> failover) and the reuse of an
+   * already-built provider are delegated to wdk-wallet-evm, so a manager can build one instance
+   * and share it with every account.
    *
    * @protected
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} [config] - The configuration object.
-   * @returns {Eip1193Provider} A wrapped Eip1193Provider instance.
+   * @returns {Provider | undefined} The shared provider, or undefined if none is configured.
    * @throws {ValueError} If the `provider` option is set to an empty array.
    */
-  _createFailoverProvider (config = this._config) {
-    const { provider, retries = 3 } = config
-
-    if (Array.isArray(provider)) {
-      if (!provider.length) {
-        throw new ValueError("The 'provider' option cannot be set to an empty list.")
-      }
-
-      const failoverProvider = new FailoverProvider({ retries })
-
-      for (const entry of provider) {
-        const option = this._wrapEip1193Provider(entry)
-        failoverProvider.addProvider(option)
-      }
-
-      return failoverProvider.initialize()
+  _buildProvider (config = this._config) {
+    if (Array.isArray(config.provider) && config.provider.length === 0) {
+      throw new ValueError("The 'provider' option cannot be set to an empty list.")
     }
 
-    return this._wrapEip1193Provider(provider)
+    return WalletAccountReadOnlyEvm._buildProvider(config)
   }
 
   /** @private */
@@ -838,8 +859,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
     const bundlerRpc = WalletAccountReadOnlyEvmErc4337._rpcTarget(config.bundlerUrl, config.bundlerHeaders)
     const baseUserOp = (mode === PaymasterMode.NATIVE || provider === 'candide')
-      ? await smartAccount.createUserOperation(calls, this._provider, bundlerRpc, overrides)
-      : await smartAccount.createUserOperation(calls, this._provider, undefined, { skipGasEstimation: true, ...overrides })
+      ? await smartAccount.createUserOperation(calls, this._eip1193Provider, bundlerRpc, overrides)
+      : await smartAccount.createUserOperation(calls, this._eip1193Provider, undefined, { skipGasEstimation: true, ...overrides })
 
     if (mode === PaymasterMode.NATIVE) {
       return { userOp: baseUserOp, smartAccount, mode, chainId }

@@ -900,25 +900,14 @@ describe('@wdk/wallet-evm-erc-4337', () => {
 
     const buildSpy = jest.spyOn(account0, '_buildUserOperation')
 
-    await account0.quoteTransfer(
-      { token: testToken.target, recipient: ACCOUNT1.safeAddress, amount: 1n },
-      undefined,
-      OVERRIDES
-    )
+    await account0.quoteTransfer({ token: testToken.target, recipient: ACCOUNT1.safeAddress, amount: 1n, ...OVERRIDES })
     assertTxHasOverrides(buildSpy.mock.calls[buildSpy.mock.calls.length - 1][2])
 
-    const transferRes = await account0.transfer(
-      { token: testToken.target, recipient: ACCOUNT1.safeAddress, amount: 2n },
-      undefined,
-      OVERRIDES
-    )
+    const transferRes = await account0.transfer({ token: testToken.target, recipient: ACCOUNT1.safeAddress, amount: 2n, ...OVERRIDES })
     await waitForTx(transferRes.hash, account0)
     assertTxHasOverrides(buildSpy.mock.calls[buildSpy.mock.calls.length - 1][2])
 
-    const approveRes = await account0.approve(
-      { token: testToken.target, spender: ACCOUNT1.safeAddress, amount: 1n },
-      OVERRIDES
-    )
+    const approveRes = await account0.approve({ token: testToken.target, spender: ACCOUNT1.safeAddress, amount: 1n, ...OVERRIDES })
     await waitForTx(approveRes.hash, account0)
     assertTxHasOverrides(buildSpy.mock.calls[buildSpy.mock.calls.length - 1][2])
 

@@ -100,6 +100,14 @@ const DUMMY_USER_OP = {
   signature: '0x'
 }
 
+const GAS_OVERRIDES = {
+  callGasLimit: 111_111n,
+  verificationGasLimit: 222_222n,
+  preVerificationGas: 33_333n,
+  maxFeePerGas: 2_000_000_000n,
+  maxPriorityFeePerGas: 1_500_000_000n
+}
+
 const EIP1193_PROVIDER = {
   request: jest.fn(async ({ method }) => {
     if (method === 'eth_chainId') return '0x1'
@@ -626,6 +634,25 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         )
       })
 
+      test('should forward the gas overrides set on the transfer options to the user operation', async () => {
+        sendUserOperationMock.mockResolvedValue(DUMMY_USER_OP_HASH)
+
+        const abi = ['function transfer(address to, uint256 amount) returns (bool)']
+        const contract = new Contract(USDT_MAINNET_ADDRESS, abi)
+        const expectedData = contract.interface.encodeFunctionData('transfer', [TRANSFER.recipient, TRANSFER.amount])
+
+        const { hash, fee } = await account.transfer({ ...TRANSFER, ...GAS_OVERRIDES })
+
+        expect(hash).toBe(DUMMY_USER_OP_HASH)
+        expect(fee).toBe(0n)
+        expect(createUserOperationMock).toHaveBeenCalledWith(
+          [{ to: USDT_MAINNET_ADDRESS, value: 0n, data: expectedData }],
+          EIP1193_PROVIDER,
+          undefined,
+          { skipGasEstimation: true, ...GAS_OVERRIDES }
+        )
+      })
+
       test('should throw if the fee exceeds the transfer max fee configuration', async () => {
         createPaymasterUserOperationMock.mockResolvedValue({
           userOperation: { ...DUMMY_USER_OP },
@@ -714,6 +741,26 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           EIP1193_PROVIDER,
           undefined,
           { skipGasEstimation: true }
+        )
+      })
+
+      test('should forward the gas overrides set on the approve options to the user operation', async () => {
+        getAllowanceMock.mockResolvedValue(0n)
+        sendUserOperationMock.mockResolvedValue(DUMMY_USER_OP_HASH)
+
+        const abi = ['function approve(address spender, uint256 amount) returns (bool)']
+        const contract = new Contract(USDT_MAINNET_ADDRESS, abi)
+        const expectedData = contract.interface.encodeFunctionData('approve', [SPENDER, AMOUNT])
+
+        const { hash, fee } = await account.approve({ token: USDT_MAINNET_ADDRESS, spender: SPENDER, amount: AMOUNT, ...GAS_OVERRIDES })
+
+        expect(hash).toBe(DUMMY_USER_OP_HASH)
+        expect(fee).toBe(0n)
+        expect(createUserOperationMock).toHaveBeenCalledWith(
+          [{ to: USDT_MAINNET_ADDRESS, value: 0n, data: expectedData }],
+          EIP1193_PROVIDER,
+          undefined,
+          { skipGasEstimation: true, ...GAS_OVERRIDES }
         )
       })
 

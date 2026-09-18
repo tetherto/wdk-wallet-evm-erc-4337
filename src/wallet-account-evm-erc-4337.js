@@ -78,7 +78,10 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @param {EvmErc4337WalletConfig} config - The configuration object.
    */
   constructor (seed, path, config) {
-    const ownerAccount = new WalletAccountEvm(seed, path, config)
+    // Owner EOA only needs keys/address for 4337; strip `provider` so
+    // wdk-wallet-evm does not open a second JsonRpcProvider.
+    const { provider: _provider, ...ownerConfig } = config
+    const ownerAccount = new WalletAccountEvm(seed, path, ownerConfig)
 
     super(ownerAccount._address, config)
 
@@ -211,7 +214,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @throws {ValueError} - If trying to approve usdts on ethereum with allowance not equal to zero (due to the usdt allowance reset requirement).
    */
   async approve (options) {
-    if (!this._ownerAccount._provider) {
+    if (!this._provider) {
       throw new ProviderRequiredError('The wallet must be connected to a provider to approve funds.')
     }
 
@@ -228,7 +231,9 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     }
 
     const abi = ['function approve(address spender, uint256 amount) returns (bool)']
-    const contract = new Contract(token, abi, this._ownerAccount._provider)
+
+    // No runner needed - only encoding calldata for the UserOperation.
+    const contract = new Contract(token, abi)
 
     const tx = {
       to: token,

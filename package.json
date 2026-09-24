@@ -32,7 +32,7 @@
   "dependencies": {
     "@tetherto/wdk-failover-provider": "1.0.0-beta.2",
     "@tetherto/wdk-wallet": "1.0.0-beta.17",
-    "@tetherto/wdk-wallet-evm": "1.0.0-beta.18",
+    "@tetherto/wdk-wallet-evm": "1.0.0-beta.19",
     "abstractionkit": "0.4.0",
     "bare-node-runtime": "^1.4.0",
     "ethers": "6.17.0"

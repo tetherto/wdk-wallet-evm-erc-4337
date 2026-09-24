@@ -214,7 +214,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         await mutableAccount.getBalance()
 
-        expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(SAFE_ADDRESS, { ...SPONSORED_CONFIG, bundlerUrl: 'https://dummy-other-bundler.url/' })
+        expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(SAFE_ADDRESS, { ...SPONSORED_CONFIG, bundlerUrl: 'https://dummy-other-bundler.url/', provider: mutableAccount._provider })
       })
     })
 
@@ -294,7 +294,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         const balance = await safeAccount.getBalance()
 
         expect(balance).toBe(DUMMY_BALANCE)
-        expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
+        expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(EXISTING_SAFE_ADDRESS, { ...SPONSORED_CONFIG, provider: safeAccount._provider })
       })
 
       test('should quote against the given safe address', async () => {
@@ -385,7 +385,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         const balance = await account.getBalance()
 
         expect(balance).toBe(DUMMY_BALANCE)
-        expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(SAFE_ADDRESS, SPONSORED_CONFIG)
+        expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(SAFE_ADDRESS, { ...SPONSORED_CONFIG, provider: account._provider })
       })
     })
 
@@ -907,7 +907,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         expect(result).toBe(true)
         expect(verifyMock).toHaveBeenCalledWith(MESSAGE, SIGNATURE)
-        expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(OWNER_ADDRESS, SPONSORED_CONFIG)
+        expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider: account._provider })
       })
 
       test('should return false for an invalid signature', async () => {

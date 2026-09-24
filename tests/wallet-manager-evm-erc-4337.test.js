@@ -43,7 +43,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
     describe('constructor', () => {
       test('should initialize a wallet with a provider url', () => {
         expect(JsonRpcProviderMock).toHaveBeenCalledTimes(1)
-        expect(JsonRpcProviderMock).toHaveBeenCalledWith(SPONSORED_CONFIG.provider)
+        expect(JsonRpcProviderMock.mock.calls[0][0]).toBe(SPONSORED_CONFIG.provider)
       })
 
       test('should initialize a wallet with a list of provider urls', () => {
@@ -52,8 +52,9 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           provider: ['https://primary.url/', 'https://failover.url/']
         })
 
-        expect(JsonRpcProviderMock).toHaveBeenCalledWith('https://primary.url/')
-        expect(JsonRpcProviderMock).toHaveBeenCalledWith('https://failover.url/')
+        const urls = JsonRpcProviderMock.mock.calls.map(([url]) => url)
+        expect(urls).toContain('https://primary.url/')
+        expect(urls).toContain('https://failover.url/')
 
         failoverWallet.dispose()
       })
@@ -157,8 +158,9 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(feeRates.normal).toBe(11_000_000_000n)
         expect(feeRates.fast).toBe(20_000_000_000n)
         expect(getFeeDataMock).toHaveBeenCalledTimes(1)
-        expect(JsonRpcProviderMock).toHaveBeenCalledWith('https://primary.url/')
-        expect(JsonRpcProviderMock).toHaveBeenCalledWith('https://failover.url/')
+        const urls = JsonRpcProviderMock.mock.calls.map(([url]) => url)
+        expect(urls).toContain('https://primary.url/')
+        expect(urls).toContain('https://failover.url/')
       })
 
       test('should throw if the provider does not return any fee data', async () => {

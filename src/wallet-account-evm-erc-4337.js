@@ -410,7 +410,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     if (nonce === undefined) {
       const cached = this._consumeCachedQuote(tx)
       if (cached?.userOp) {
-        const onChainNonce = await fetchAccountNonce(this._provider, cached.smartAccount.entrypointAddress, cached.smartAccount.accountAddress)
+        const onChainNonce = await fetchAccountNonce(this._eip1193Provider, cached.smartAccount.entrypointAddress, cached.smartAccount.accountAddress)
         if (cached.userOp.nonce === onChainNonce) {
           return cached
         }
@@ -460,7 +460,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
           throw new ValueError('nonceKey must be within the uint192 range (0 to 2^192 - 1).')
         }
       }
-      return await fetchAccountNonce(this._provider, ENTRYPOINT_V7, this._address, key)
+      return await fetchAccountNonce(this._eip1193Provider, ENTRYPOINT_V7, this._address, key)
     }
 
     if (config.parallel) {

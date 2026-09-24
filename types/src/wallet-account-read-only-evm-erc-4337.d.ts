@@ -54,17 +54,22 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     protected _config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">;
     /**
-     * An EIP-1193–compatible provider used to interact with the blockchain.
+     * The shared ethers provider used to interact with the blockchain. A single instance is
+     * built here (or reused from the manager) and passed to every nested `WalletAccountReadOnlyEvm`
+     * so accounts do not open their own connection.
      *
-     * Note: the provider type is restricted to EIP-1193 to ensure compatibility
-     * with Safe4337Pack and to enable the failover mechanism. While RPC URLs
-     * can still be provided in the configuration, they are internally wrapped
-     * into an EIP-1193 provider.
+     * @protected
+     * @type {Provider}
+     */
+    protected _provider: Provider;
+    /**
+     * An EIP-1193 adapter over {@link _provider}, built once and used only where abstractionkit
+     * (Safe4337Pack) requires the EIP-1193 interface. Reuses the same underlying connection.
      *
      * @protected
      * @type {Eip1193Provider}
      */
-    protected _provider: Eip1193Provider;
+    protected _eip1193Provider: Eip1193Provider;
     /**
      * Cached AbstractionKit bundler.
      *
@@ -256,22 +261,34 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     protected _getChainId(): Promise<bigint>;
     /**
-     * Wraps a string RPC URL or provider into an EIP-1193 compatible provider.
+     * Adapts an ethers provider (or failover aggregate) to the EIP-1193 interface required by
+     * abstractionkit (Safe4337Pack). Already-EIP-1193 objects are returned as-is.
      *
      * @protected
-     * @param {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
-     * @returns { Eip1193Provider } A wrapped Eip1193Provider instance.
+     * @param {Provider | Eip1193Provider} provider - The ethers provider (or EIP-1193 provider) to adapt.
+     * @returns {Eip1193Provider} An EIP-1193-compatible provider that reuses the given client.
      */
-    protected _wrapEip1193Provider (provider: string | Eip1193Provider): Eip1193Provider
+    protected static _asEip1193 (provider: Provider | Eip1193Provider): Eip1193Provider
     /**
-     * Creates a FailoverProvider from the configured providers. If only one provider is supplied, it is wrapped and returned.
+     * Builds the EIP-1193 view that abstractionkit needs. A caller-supplied EIP-1193 provider is
+     * reused directly; otherwise the shared ethers provider is adapted so `request` forwards to `send`.
+     *
+     * @protected
+     * @param {Provider} provider - The shared ethers provider built from `config`.
+     * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The configuration object.
+     * @returns {Eip1193Provider} The EIP-1193 provider that reuses the given connection.
+     */
+    protected static _buildEip1193Provider (provider: Provider, config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): Eip1193Provider
+    /**
+     * Builds the single shared ethers provider from the configuration, reusing an already-built
+     * provider as-is and delegating construction to wdk-wallet-evm.
      *
      * @protected
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} [config] - The configuration object.
-     * @returns {Eip1193Provider} A wrapped Eip1193Provider instance.
+     * @returns {Provider} The shared provider.
      * @throws {ValueError} If the `provider` option is set to an empty array.
      */
-    protected _createFailoverProvider (config?: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): Eip1193Provider
+    protected _buildProvider (config?: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): Provider
     /** @private */
     private _getEvmReadOnlyAccount;
     /**
@@ -322,6 +339,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     protected _getUserOperationGasCost(txs: EvmErc4337Transaction[], config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): Promise<BuiltUserOperation & Omit<TransactionResult, "hash">>;
 }
+export type Provider = import("ethers").Provider;
 export type Eip1193Provider = import("ethers").Eip1193Provider;
 export type TransactionResult = import("@tetherto/wdk-wallet-evm").TransactionResult;
 export type TransferOptions = import("@tetherto/wdk-wallet-evm").TransferOptions;
@@ -472,9 +490,9 @@ export type EvmErc4337WalletCommonConfig = {
      */
     chainId: number;
     /**
-     * - The url of the rpc provider, or an instance of a class that implements eip-1193. It's also possible to provide an array of urls or EIP 1193 providers instead. In such case, connection errors will cause the wallet to automatically fallback on the next provider in the list.
+     * - The url of the rpc provider, an already-built ethers `Provider` (reused as-is), or an instance of a class that implements eip-1193. It's also possible to provide an array of these instead. In such case, connection errors will cause the wallet to automatically fallback on the next provider in the list.
      */
-    provider: string | Eip1193Provider | Array<string | Eip1193Provider>;
+    provider: string | Provider | Eip1193Provider | Array<string | Provider | Eip1193Provider>;
     /**
      * - If set and if 'provider' is a list of urls or EIP 1193 providers, the number of additional retry attempts after the initial call fails. Total attempts = `1 + retries`. For example, `retries: 3` with 4 providers will try each provider once before throwing. If `retries` exceeds the number of providers, the failover will loop back and retry already-failed providers in round-robin order. Default: 3.
      */

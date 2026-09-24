@@ -16,17 +16,11 @@
 
 import WalletManager, { ProviderRequiredError, ValueError } from '@tetherto/wdk-wallet'
 
-import WalletManagerEvm from '@tetherto/wdk-wallet-evm'
-
-import { BrowserProvider, JsonRpcProvider } from 'ethers'
-
-import FailoverProvider from '@tetherto/wdk-failover-provider'
+import WalletManagerEvm, { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
 import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
 
 /** @typedef {import('ethers').Provider} Provider */
-
-/** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').FeeRates} FeeRates */
 
@@ -37,7 +31,7 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    * An ethers provider to interact with a node of the blockchain.
    *
    * @protected
-   * @type {Provider}
+   * @type {Provider | undefined}
    */
   _provider
 
@@ -59,28 +53,11 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
      */
     this._config = config
 
-    const { provider, retries = 3 } = config
-
-    if (Array.isArray(provider)) {
-      if (!provider.length) {
-        throw new ValueError("The 'provider' option cannot be set to an empty list.")
-      }
-
-      const failoverProvider = new FailoverProvider({ retries })
-
-      for (const entry of provider) {
-        const option = typeof entry === 'string'
-          ? new JsonRpcProvider(entry)
-          : new BrowserProvider(entry)
-        failoverProvider.addProvider(option)
-      }
-
-      this._provider = failoverProvider.initialize()
-    } else {
-      this._provider = typeof provider === 'string'
-        ? new JsonRpcProvider(provider)
-        : new BrowserProvider(provider)
+    if (Array.isArray(config.provider) && config.provider.length === 0) {
+      throw new ValueError("The 'provider' option cannot be set to an empty list.")
     }
+
+    this._provider = WalletAccountReadOnlyEvm._buildProvider(config)
   }
 
   /**
@@ -116,35 +93,14 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
   }
 
   /**
-   * Builds the account config, injecting the manager's shared provider so accounts reuse it
-   * instead of opening their own.
+   * Builds the account config, injecting the manager's shared provider so accounts reuse the
+   * single ethers provider instance instead of opening their own.
    *
    * @private
    * @returns {EvmErc4337WalletConfig} The account configuration.
    */
   _accountConfig () {
-    return { ...this._config, provider: WalletManagerEvmErc4337._asEip1193(this._provider) }
-  }
-
-  /**
-   * Adapts an ethers Provider (or failover aggregate) to EIP-1193 without constructing
-   * a new JsonRpcProvider. Already-EIP-1193 objects are returned as-is.
-   *
-   * @protected
-   * @param {Provider | Eip1193Provider} provider - An ethers Provider, failover aggregate, or EIP-1193 provider to adapt.
-   * @returns {Eip1193Provider} An EIP-1193-compatible provider that reuses the given client.
-   */
-  static _asEip1193 (provider) {
-    if (provider && typeof provider.request === 'function') {
-      return /** @type {Eip1193Provider} */ (provider)
-    }
-
-    return {
-      provider,
-      request ({ method, params }) {
-        return this.provider.send(method, params ?? [])
-      }
-    }
+    return { ...this._config, provider: this._provider }
   }
 
   /**

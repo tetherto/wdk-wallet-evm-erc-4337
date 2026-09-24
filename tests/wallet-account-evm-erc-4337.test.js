@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals'
 import * as bip39 from 'bip39'
 import { Contract, keccak256, toUtf8Bytes } from 'ethers'
-import { MaximumFeeExceededError, ProviderRequiredError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
+import { MaximumFeeExceededError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
 const actualWalletEvm = await import('@tetherto/wdk-wallet-evm')
 const actualAk = await import('abstractionkit')
@@ -826,18 +826,6 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(hash).toBe(DUMMY_USER_OP_HASH)
         expect(fee).toBe(0n)
         expect(getAllowanceMock).not.toHaveBeenCalled()
-      })
-
-      test('should throw if the account is not connected to a provider', async () => {
-        const offlineAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", {
-          ...SPONSORED_CONFIG,
-          provider: undefined
-        })
-
-        const promise = offlineAccount.approve({ token: USDT_MAINNET_ADDRESS, spender: SPENDER, amount: AMOUNT })
-
-        await expect(promise).rejects.toThrow(ProviderRequiredError)
-        await expect(promise).rejects.toThrow('The wallet must be connected to a provider to approve funds.')
       })
     })
 

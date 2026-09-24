@@ -3,7 +3,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     /**
      * Creates a new evm [erc-4337](https://www.erc4337.io/docs) wallet account.
      *
-     * @param {string | Uint8Array} seed - The wallet's [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed phrase.
+     * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
      * @param {string} path - The BIP-44 derivation path (e.g. "0'/0/0").
      * @param {EvmErc4337WalletConfig} config - The configuration object.
      */

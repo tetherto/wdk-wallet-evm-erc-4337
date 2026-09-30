@@ -7,7 +7,7 @@
 
 **Note**: This package is currently in beta. Please test thoroughly in development environments before using in production.
 
-A simple and secure package to manage ERC-4337 compliant wallets for EVM-compatible blockchains. This package provides a clean API for creating, managing, and interacting with account abstraction wallets using BIP-39 seed phrases and EVM-specific derivation paths.
+An ERC-4337 wallet module for EVM-compatible blockchains in WDK (Wallet Development Kit) by Tether. This package provides a clean API for creating, managing, and interacting with account abstraction wallets using BIP-39 seed phrases and EVM-specific derivation paths.
 
 ## About WDK
 

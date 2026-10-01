@@ -16,7 +16,7 @@
 
 import { Contract, hexlify, keccak256, randomBytes, toUtf8Bytes } from 'ethers'
 
-import { MaximumFeeExceededError, ProviderRequiredError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
+import { DisposalError, MaximumFeeExceededError, ProviderRequiredError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
@@ -103,6 +103,18 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @type {Map<string, TransactionQuote>}
      */
     this._quoteCache = new Map()
+
+    /** @private */
+    this._disposed = false
+  }
+
+  /**
+   * True if the account has been disposed.
+   *
+   * @type {boolean}
+   */
+  get disposed () {
+    return this._disposed
   }
 
   /**
@@ -154,8 +166,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    *
    * @param {string} message - The message to sign.
    * @returns {Promise<string>} The message's signature.
+   * @throws {DisposalError} If the account has been disposed.
    */
   async sign (message) {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
+
     return await this._ownerAccount.sign(message)
   }
 
@@ -164,8 +181,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    *
    * @param {TypedData} typedData - The typed data to sign.
    * @returns {Promise<string>} The typed data signature.
+   * @throws {DisposalError} If the account has been disposed.
    */
   async signTypedData ({ domain, types, message }) {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
+
     return await this._ownerAccount.signTypedData({ domain, types, message })
   }
 
@@ -181,8 +203,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
    * @throws {MaximumFeeExceededError} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
    * @throws {TransactionError} If the paymaster reports AA50 (the account cannot repay the paymaster).
+   * @throws {DisposalError} If the account has been disposed.
    */
   async signTransaction (tx, config) {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
+
     const mergedConfig = { ...this._config, ...config }
 
     if (config) {
@@ -212,8 +239,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @returns {Promise<TransactionResult>} - The transaction's result.
    * @throws {ProviderRequiredError} - If the wallet is not connected to a provider.
    * @throws {ValueError} - If trying to approve usdts on ethereum with allowance not equal to zero (due to the usdt allowance reset requirement).
+   * @throws {DisposalError} If the account has been disposed.
    */
   async approve (options) {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
+
     if (!this._provider) {
       throw new ProviderRequiredError('The wallet must be connected to a provider to approve funds.')
     }
@@ -319,8 +351,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @throws {MaximumFeeExceededError} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
    * @throws {ValueError} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
    * @throws {TransactionError} If the paymaster reports AA50 (the account cannot repay the paymaster).
+   * @throws {DisposalError} If the account has been disposed.
    */
   async sendTransaction (tx, config) {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
+
     const mergedConfig = { ...this._config, ...config }
 
     if (config) {
@@ -360,8 +397,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @throws {MaximumFeeExceededError} If the transaction is not sponsored, and the transfer's cost surpasses the transfer max. fee option.
    * @throws {ValueError} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
    * @throws {TransactionError} If the paymaster reports AA50 (the account cannot repay the paymaster).
+   * @throws {DisposalError} If the account has been disposed.
    */
   async transfer (options, config) {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
+
     const mergedConfig = { ...this._config, ...config }
 
     if (config) {
@@ -400,7 +442,11 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * Disposes the wallet account, erasing the private key from the memory.
    */
   dispose () {
+    if (this._disposed) return
+
     this._ownerAccount.dispose()
+
+    this._disposed = true
   }
 
   /** @private */

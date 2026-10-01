@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals'
 import * as bip39 from 'bip39'
 import { Contract, keccak256, toUtf8Bytes } from 'ethers'
-import { MaximumFeeExceededError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
+import { DisposalError, MaximumFeeExceededError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
 const actualWalletEvm = await import('@tetherto/wdk-wallet-evm')
 const actualAk = await import('abstractionkit')
@@ -879,6 +879,36 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         disposableAccount.dispose()
 
         expect(disposableAccount.keyPair.privateKey).toBeNull()
+      })
+
+      test('should expose the disposed state', () => {
+        const disposableAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", SPONSORED_CONFIG)
+
+        expect(disposableAccount.disposed).toBe(false)
+
+        disposableAccount.dispose()
+
+        expect(disposableAccount.disposed).toBe(true)
+      })
+
+      test('should throw DisposalError from signing methods once disposed', async () => {
+        const disposableAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", SPONSORED_CONFIG)
+
+        disposableAccount.dispose()
+
+        const typedData = {
+          domain: { name: 'Test', version: '1', chainId: 1 },
+          types: { Mail: [{ name: 'contents', type: 'string' }] },
+          message: { contents: 'hello' }
+        }
+        const tx = { to: ACCOUNT.address, value: 0 }
+
+        await expect(disposableAccount.sign('message')).rejects.toThrow(DisposalError)
+        await expect(disposableAccount.signTypedData(typedData)).rejects.toThrow(DisposalError)
+        await expect(disposableAccount.signTransaction(tx)).rejects.toThrow(DisposalError)
+        await expect(disposableAccount.approve({ token: ACCOUNT.address, spender: ACCOUNT.address, amount: 1 })).rejects.toThrow(DisposalError)
+        await expect(disposableAccount.sendTransaction(tx)).rejects.toThrow(DisposalError)
+        await expect(disposableAccount.transfer({ token: ACCOUNT.address, recipient: ACCOUNT.address, amount: 1 })).rejects.toThrow(DisposalError)
       })
     })
   })

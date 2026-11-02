@@ -242,7 +242,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(signer.keyPair.privateKey).toBeNull()
       })
 
-      test('should throw if the signer does not expose its address synchronously', () => {
+      test('should throw if the signer address has not been resolved yet', () => {
         const signerWithoutAddress = {
           isDerivable: false,
           path: null,

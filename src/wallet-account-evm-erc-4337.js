@@ -98,13 +98,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   /**
    * Creates a new evm [erc-4337](https://www.erc4337.io/docs) wallet account using a signer as the safe's owner.
    *
-   * The signer is wiped on {@link dispose} only if `shouldWipeSignerOnDisposal` is set. It must expose its address
-   * synchronously, since the safe's address is computed from it at construction.
+   * The signer is wiped on {@link dispose} only if `shouldWipeSignerOnDisposal` is set. The safe's address is computed
+   * from the signer's address at construction, so async signers must have `await signer.getAddress()` called first.
    *
    * @overload
    * @param {ISignerEvm} signer - A signer implementing the EVM signer interface.
    * @param {EvmErc4337WalletConfig & SignerOptions} config - The configuration object.
-   * @throws {InvalidSignerError} If the signer does not expose its address synchronously.
+   * @throws {InvalidSignerError} If the signer's address is not available yet.
    */
 
   constructor (seedOrSigner, pathOrConfig, config) {
@@ -119,7 +119,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     try {
       if (!signer.address) {
-        throw new InvalidSignerError('The signer must expose its address synchronously to be used as a safe owner.')
+        throw new InvalidSignerError('The signer address is not available yet. Await signer.getAddress() before creating the account.')
       }
 
       super(signer.address, configuration)

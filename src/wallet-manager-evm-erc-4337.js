@@ -124,7 +124,6 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
       if (!this._accounts[key]) {
         const signer = this.getSigner(indexOrSignerName)
 
-        // Async signers (e.g. hardware) only expose their address once resolved.
         await signer.getAddress()
 
         this._accounts[key] ??= new WalletAccountEvmErc4337(signer, this._accountConfig())

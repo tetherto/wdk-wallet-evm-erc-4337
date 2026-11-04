@@ -124,9 +124,7 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
       if (!this._accounts[key]) {
         const signer = this.getSigner(indexOrSignerName)
 
-        await signer.getAddress()
-
-        this._accounts[key] ??= new WalletAccountEvmErc4337(signer, this._accountConfig())
+        this._accounts[key] = new WalletAccountEvmErc4337(signer, this._accountConfig())
       }
 
       return this._accounts[key]
@@ -163,14 +161,6 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
       }
 
       const childSigner = await signer.derive(path)
-
-      try {
-        await childSigner.getAddress()
-      } catch (error) {
-        childSigner.dispose()
-
-        throw error
-      }
 
       // A concurrent call may have cached this account while we were deriving.
       if (this._accounts[key]) {

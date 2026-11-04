@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globa
 import * as bip39 from 'bip39'
 import { Contract, keccak256, toUtf8Bytes } from 'ethers'
 import { InvalidSignerError, MaximumFeeExceededError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
-import { SeedSignerEvm } from '@tetherto/wdk-wallet-evm/signers'
+import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm/signers'
 
 const actualWalletEvm = await import('@tetherto/wdk-wallet-evm')
 const actualAk = await import('abstractionkit')
@@ -242,17 +242,23 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(signer.keyPair.privateKey).toBeNull()
       })
 
-      test('should throw if the signer address has not been resolved yet', () => {
-        const signerWithoutAddress = {
-          isDerivable: false,
-          path: null,
-          keyPair: null,
-          getAddress: async () => ACCOUNT.address,
-          dispose: () => {}
-        }
+      test('should predict the safe address from getAddress() when the signer has no sync address', async () => {
+        const getAddress = jest.fn().mockResolvedValue(ACCOUNT.address)
+        const lazySigner = { isDerivable: false, path: null, keyPair: null, getAddress, dispose: () => {} }
 
-        expect(() => new WalletAccountEvmErc4337(signerWithoutAddress, SPONSORED_CONFIG))
-          .toThrow(InvalidSignerError)
+        const acc = new WalletAccountEvmErc4337(lazySigner, SPONSORED_CONFIG)
+
+        expect(getAddress).not.toHaveBeenCalled()
+        expect(await acc.getAddress()).toBe(SAFE_ADDRESS)
+        expect(await acc.getAddress()).toBe(SAFE_ADDRESS)
+        expect(getAddress).toHaveBeenCalledTimes(1)
+      })
+
+      test('should throw on getAddress if the signer address is not a valid evm address', async () => {
+        const badSigner = { isDerivable: false, path: null, keyPair: null, getAddress: async () => 'not-an-address', dispose: () => {} }
+
+        await expect(new WalletAccountEvmErc4337(badSigner, SPONSORED_CONFIG).getAddress())
+          .rejects.toThrow(ValueError)
       })
     })
 
@@ -274,7 +280,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
       ])('should wipe the seed signer if the account is created with %s', (_, args) => {
         const disposeSpy = jest.spyOn(SeedSignerEvm.prototype, 'dispose')
 
-        expect(() => new WalletAccountEvmErc4337(...args)).toThrow(TypeError)
+        expect(() => new WalletAccountEvmErc4337(...args)).toThrow(ConfigurationError)
 
         expect(disposeSpy).toHaveBeenCalledTimes(1)
 
@@ -326,6 +332,17 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         privateKeyAccount.dispose()
 
         expect(privateKeyAccount.keyPair.privateKey).toBeNull()
+      })
+
+      test('should wipe the private key if the construction fails', () => {
+        const disposeSpy = jest.spyOn(PrivateKeySignerEvm.prototype, 'dispose')
+
+        expect(() => WalletAccountEvmErc4337.fromPrivateKey(ACCOUNT.keyPair.privateKey, { ...SPONSORED_CONFIG, safeModulesVersion: '0.2.0' }))
+          .toThrow(ConfigurationError)
+
+        expect(disposeSpy).toHaveBeenCalledTimes(1)
+
+        disposeSpy.mockRestore()
       })
 
       test('should sign user operations through the signer typed data, without relying on its internals', async () => {

@@ -32,13 +32,12 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     /**
      * Creates a new evm [erc-4337](https://www.erc4337.io/docs) wallet account using a signer as the safe's owner.
      *
-     * The signer is wiped on {@link dispose} only if `shouldWipeSignerOnDisposal` is set. The safe's address is computed
-     * from the signer's address at construction, so async signers must have `await signer.getAddress()` called first.
+     * The signer is wiped on {@link dispose} only if `shouldWipeSignerOnDisposal` is set. The safe's address is
+     * predicted from the signer's address on the first call to {@link getAddress}.
      *
      * @overload
      * @param {ISignerEvm} signer - A signer implementing the EVM signer interface.
      * @param {EvmErc4337WalletConfig & SignerOptions} config - The configuration object.
-     * @throws {InvalidSignerError} If the signer's address is not available yet.
      */
     constructor(signer: ISignerEvm, config: EvmErc4337WalletConfig & SignerOptions);
     /**
@@ -68,6 +67,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     /** @private */
     private _signer;
     /** @private */
+    private _safeAddress;
+    /** @private */
     private _quoteCache;
     /**
      * The derivation path of this account (see [BIP-44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)),
@@ -86,6 +87,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @type {KeyPair | null}
      */
     get keyPair(): KeyPair | null;
+    /**
+     * Returns the account's address, which is the safe's address predicted from the signer's address.
+     *
+     * @returns {Promise<string>} The account's address.
+     * @throws {ValueError} If the signer's address is not a well-formed evm address.
+     */
+    getAddress(): Promise<string>;
     /**
      * Signs a message.
      *
@@ -180,6 +188,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @returns {Promise<WalletAccountReadOnlyEvmErc4337>} The read-only account.
      */
     toReadOnlyAccount(): Promise<WalletAccountReadOnlyEvmErc4337>;
+    /**
+     * Returns the safe owner's address, as given by the signer.
+     *
+     * @protected
+     * @returns {Promise<string>} The owner's address.
+     */
+    protected _getOwnerAddress(): Promise<string>;
     /**
      * Disposes the wallet account, erasing the private key from the memory.
      */

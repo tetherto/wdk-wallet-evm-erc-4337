@@ -16,13 +16,13 @@
 
 import { Contract, hexlify, keccak256, randomBytes, toUtf8Bytes } from 'ethers'
 
-import { InvalidSignerError, MaximumFeeExceededError, ProviderRequiredError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
+import { MaximumFeeExceededError, ProviderRequiredError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
 import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm/signers'
 
 import { ENTRYPOINT_V7, calculateUserOperationMaxGasCost, fetchAccountNonce } from 'abstractionkit'
 
-import WalletAccountReadOnlyEvmErc4337, { FEE_TOLERANCE_COEFFICIENT } from './wallet-account-read-only-evm-erc-4337.js'
+import WalletAccountReadOnlyEvmErc4337, { DEFERRED_OWNER, FEE_TOLERANCE_COEFFICIENT } from './wallet-account-read-only-evm-erc-4337.js'
 
 /** @typedef {import('abstractionkit').UserOperationV7} UserOperationV7 */
 /** @typedef {import('abstractionkit').SafeAccountV0_3_0} SafeAccountV0_3_0 */
@@ -98,13 +98,12 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   /**
    * Creates a new evm [erc-4337](https://www.erc4337.io/docs) wallet account using a signer as the safe's owner.
    *
-   * The signer is wiped on {@link dispose} only if `shouldWipeSignerOnDisposal` is set. The safe's address is computed
-   * from the signer's address at construction, so async signers must have `await signer.getAddress()` called first.
+   * The signer is wiped on {@link dispose} only if `shouldWipeSignerOnDisposal` is set. The safe's address is
+   * predicted from the signer's address on the first call to {@link getAddress}.
    *
    * @overload
    * @param {ISignerEvm} signer - A signer implementing the EVM signer interface.
    * @param {EvmErc4337WalletConfig & SignerOptions} config - The configuration object.
-   * @throws {InvalidSignerError} If the signer's address is not available yet.
    */
 
   constructor (seedOrSigner, pathOrConfig, config) {
@@ -117,14 +116,12 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
         ]
       : [seedOrSigner, pathOrConfig]
 
-    try {
-      if (!signer.address) {
-        throw new InvalidSignerError('The signer address is not available yet. Await signer.getAddress() before creating the account.')
-      }
+    const shouldWipeSignerOnDisposal = isSeed || Boolean(configuration?.shouldWipeSignerOnDisposal)
 
-      super(signer.address, configuration)
+    try {
+      super(undefined, { ...configuration, [DEFERRED_OWNER]: true })
     } catch (error) {
-      if (isSeed) signer.dispose()
+      if (shouldWipeSignerOnDisposal) signer.dispose()
 
       throw error
     }
@@ -143,10 +140,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @protected
      * @type {boolean}
      */
-    this._shouldWipeSignerOnDisposal = isSeed || Boolean(configuration.shouldWipeSignerOnDisposal)
+    this._shouldWipeSignerOnDisposal = shouldWipeSignerOnDisposal
 
     /** @private */
     this._signer = signer
+
+    /** @private */
+    this._safeAddress = undefined
 
     /**
      * Cached quotes from fee estimations, keyed by serialized transaction.
@@ -206,6 +206,18 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    */
   get keyPair () {
     return this._signer.keyPair
+  }
+
+  /**
+   * Returns the account's address, which is the safe's address predicted from the signer's address.
+   *
+   * @returns {Promise<string>} The account's address.
+   * @throws {ValueError} If the signer's address is not a well-formed evm address.
+   */
+  async getAddress () {
+    this._safeAddress ??= WalletAccountReadOnlyEvmErc4337.predictSafeAddress(await this._signer.getAddress(), this._config)
+
+    return this._safeAddress
   }
 
   /**
@@ -448,11 +460,21 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @returns {Promise<WalletAccountReadOnlyEvmErc4337>} The read-only account.
    */
   async toReadOnlyAccount () {
-    const address = await this._signer.getAddress()
+    const address = await this._getOwnerAddress()
 
     const readOnlyAccount = new WalletAccountReadOnlyEvmErc4337(address, this._config)
 
     return readOnlyAccount
+  }
+
+  /**
+   * Returns the safe owner's address, as given by the signer.
+   *
+   * @protected
+   * @returns {Promise<string>} The owner's address.
+   */
+  async _getOwnerAddress () {
+    return await this._signer.getAddress()
   }
 
   /**
@@ -521,7 +543,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
           throw new ValueError('nonceKey must be within the uint192 range (0 to 2^192 - 1).')
         }
       }
-      return await fetchAccountNonce(this._eip1193Provider, ENTRYPOINT_V7, this._address, key)
+      return await fetchAccountNonce(this._eip1193Provider, ENTRYPOINT_V7, await this.getAddress(), key)
     }
 
     if (config.parallel) {
@@ -565,7 +587,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       )
 
     const signer = {
-      address: this._ownerAccountAddress,
+      address: await this._getOwnerAddress(),
       signTypedData: async (typedData) => await this._signer.signTypedData(typedData)
     }
     userOp.signature = await smartAccount.signUserOperationWithSigners(

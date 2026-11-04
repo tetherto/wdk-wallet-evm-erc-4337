@@ -100,8 +100,8 @@ const account = WalletAccountEvmErc4337.fromPrivateKey(privateKey, config)
 
 **Notes:**
 - A wallet created from a seed wipes its default signer on `dispose()`. Signers you supply are never wiped by the wallet, and an account wipes a signer you give it only with `shouldWipeSignerOnDisposal: true`.
-- The signer must expose a synchronous `address`, since the safe's address is computed from it. Signers that only provide it asynchronously are not supported yet.
-- `account.path` and `account.keyPair` can be `null`, and `account.index` has been removed.
+- The safe's address is predicted from the signer's `getAddress()` on first use, so signers that only provide their address asynchronously (e.g. hardware signers) are supported.
+- `account.path` and `account.keyPair` are `null` for signers without a derivation path or key material.
 
 ## Concurrent / Parallel Sends (nonce lanes)
 

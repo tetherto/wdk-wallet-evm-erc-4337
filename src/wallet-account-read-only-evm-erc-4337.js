@@ -191,6 +191,9 @@ const SAFE_MODULES_MAP = {
 
 const PINNED_SAFE_ADDRESS = Symbol('pinnedSafeAddress')
 
+/** @internal */
+export const DEFERRED_OWNER = Symbol('deferredOwner')
+
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
   /**
    * Creates a new read-only evm [erc-4337](https://www.erc4337.io/docs) wallet account.
@@ -209,12 +212,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       throw new ConfigurationError(`Unsupported safe modules version: ${config.safeModulesVersion}`)
     }
 
-    const { [PINNED_SAFE_ADDRESS]: pinnedSafeAddress, ...unpinnedConfig } = config
-    const [accountConfig, ownerAccountAddress] = pinnedSafeAddress === undefined
+    const { [PINNED_SAFE_ADDRESS]: pinnedSafeAddress, [DEFERRED_OWNER]: deferredOwner, ...cleanConfig } = config
+    const [accountConfig, ownerAccountAddress] = pinnedSafeAddress === undefined && !deferredOwner
       ? [config, address]
-      : [unpinnedConfig, undefined]
+      : [cleanConfig, undefined]
 
-    super(pinnedSafeAddress ?? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config))
+    super(deferredOwner ? undefined : pinnedSafeAddress ?? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config))
 
     /**
      * The read-only evm erc-4337 wallet account configuration.
@@ -547,11 +550,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async verify (message, signature) {
-    if (this._ownerAccountAddress === undefined) {
+    const ownerAddress = await this._getOwnerAddress()
+
+    if (ownerAddress === undefined) {
       throw new UnsupportedOperationError('verify(message, signature)')
     }
 
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, {
+    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(ownerAddress, {
       ...this._config,
       provider: this._provider
     })
@@ -567,11 +572,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async verifyTypedData (typedData, signature) {
-    if (this._ownerAccountAddress === undefined) {
+    const ownerAddress = await this._getOwnerAddress()
+
+    if (ownerAddress === undefined) {
       throw new UnsupportedOperationError('verifyTypedData(typedData, signature)')
     }
 
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, {
+    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(ownerAddress, {
       ...this._config,
       provider: this._provider
     })
@@ -639,11 +646,23 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       return this._deployedSmartAccount
     }
 
-    if (this._ownerAccountAddress === undefined) {
+    const ownerAddress = await this._getOwnerAddress()
+
+    if (ownerAddress === undefined) {
       throw new ConfigurationError(`The safe at '${safeAddress}' is not deployed. Deploying it requires the owner's address, which an account created from a safe address does not have.`)
     }
 
-    return SafeAccount030.initializeNewAccount([this._ownerAccountAddress], overrides)
+    return SafeAccount030.initializeNewAccount([ownerAddress], overrides)
+  }
+
+  /**
+   * Returns the safe owner's address.
+   *
+   * @protected
+   * @returns {Promise<string | undefined>} The owner's address, or `undefined` if the account was created from a safe address.
+   */
+  async _getOwnerAddress () {
+    return this._ownerAccountAddress
   }
 
   /**

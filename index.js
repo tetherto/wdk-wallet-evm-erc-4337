@@ -26,6 +26,8 @@
 /** @typedef {import('@tetherto/wdk-wallet-evm').FeeRates} FeeRates */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').KeyPair} KeyPair */
+/** @typedef {import('@tetherto/wdk-wallet-evm').SignerOptions} SignerOptions */
+/** @typedef {import('@tetherto/wdk-wallet-evm/signers').ISignerEvm} ISignerEvm */
 /** @typedef {import('./src/wallet-account-read-only-evm-erc-4337.js').EvmErc4337Transaction} EvmErc4337Transaction */
 /** @typedef {import('./src/wallet-account-read-only-evm-erc-4337.js').EvmErc4337GasOverrides} EvmErc4337GasOverrides */
 /** @typedef {import('./src/wallet-account-read-only-evm-erc-4337.js').EvmErc4337TransferOptions} EvmErc4337TransferOptions */

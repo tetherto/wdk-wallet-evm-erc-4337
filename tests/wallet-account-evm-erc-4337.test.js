@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals'
 import * as bip39 from 'bip39'
 import { Contract, keccak256, toUtf8Bytes } from 'ethers'
-import { MaximumFeeExceededError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
+import { InvalidSignerError, MaximumFeeExceededError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
+import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm/signers'
 
 const actualWalletEvm = await import('@tetherto/wdk-wallet-evm')
 const actualAk = await import('abstractionkit')
@@ -65,7 +66,6 @@ const INVALID_SEED_PHRASE = 'invalid seed phrase'
 const SEED = bip39.mnemonicToSeedSync(SEED_PHRASE)
 
 const ACCOUNT = {
-  index: 0,
   path: "m/44'/60'/0'/0/0",
   address: '0x405005C7c4422390F4B334F64Cf20E0b767131d0',
   keyPair: {
@@ -155,7 +155,6 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
     describe('constructor', () => {
       test('should successfully initialize an account for the given seed phrase and path', () => {
-        expect(account.index).toBe(ACCOUNT.index)
         expect(account.path).toBe(ACCOUNT.path)
         expect(toHex(account.keyPair.privateKey)).toBe(ACCOUNT.keyPair.privateKey)
         expect(toHex(account.keyPair.publicKey)).toBe(ACCOUNT.keyPair.publicKey)
@@ -164,7 +163,6 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
       test('should successfully initialize an account for the given seed and path', () => {
         const acc = new WalletAccountEvmErc4337(SEED, "0'/0/0", SPONSORED_CONFIG)
 
-        expect(acc.index).toBe(ACCOUNT.index)
         expect(acc.path).toBe(ACCOUNT.path)
         expect(toHex(acc.keyPair.privateKey)).toBe(ACCOUNT.keyPair.privateKey)
         expect(toHex(acc.keyPair.publicKey)).toBe(ACCOUNT.keyPair.publicKey)
@@ -189,6 +187,174 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
       test('should throw if the safe modules version is not supported', () => {
         expect(() => new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", { ...SPONSORED_CONFIG, safeModulesVersion: '0.2.0' }))
           .toThrow(new ConfigurationError('Unsupported safe modules version: 0.2.0'))
+      })
+    })
+
+    describe('constructor with a seed and no path', () => {
+      test('should default to the first account', async () => {
+        const acc = new WalletAccountEvmErc4337(SEED_PHRASE, SPONSORED_CONFIG)
+
+        expect(acc.path).toBe(ACCOUNT.path)
+        expect(await acc.getAddress()).toBe(SAFE_ADDRESS)
+
+        acc.dispose()
+      })
+    })
+
+    describe('constructor with a signer', () => {
+      let signer
+
+      beforeEach(async () => {
+        signer = await new SeedSignerEvm(SEED_PHRASE, "m/44'/60'").derive("0'/0/0")
+      })
+
+      afterEach(() => {
+        signer.dispose()
+      })
+
+      test('should derive the same safe address as the equivalent seed account', async () => {
+        const acc = new WalletAccountEvmErc4337(signer, SPONSORED_CONFIG)
+
+        expect(await acc.getAddress()).toBe(SAFE_ADDRESS)
+        expect(acc.path).toBe(ACCOUNT.path)
+        expect(acc.keyPair).toEqual(signer.keyPair)
+      })
+
+      test('should sign messages through the signer', async () => {
+        const acc = new WalletAccountEvmErc4337(signer, SPONSORED_CONFIG)
+
+        expect(await acc.sign('Dummy message to sign.')).toBe(await account.sign('Dummy message to sign.'))
+      })
+
+      test('should not wipe the signer on disposal by default', () => {
+        const acc = new WalletAccountEvmErc4337(signer, SPONSORED_CONFIG)
+
+        acc.dispose()
+
+        expect(signer.keyPair.privateKey).not.toBeNull()
+      })
+
+      test('should wipe the signer on disposal if shouldWipeSignerOnDisposal is set', () => {
+        const acc = new WalletAccountEvmErc4337(signer, { ...SPONSORED_CONFIG, shouldWipeSignerOnDisposal: true })
+
+        acc.dispose()
+
+        expect(signer.keyPair.privateKey).toBeNull()
+      })
+
+      test('should predict the safe address from getAddress() when the signer has no sync address', async () => {
+        const getAddress = jest.fn().mockResolvedValue(ACCOUNT.address)
+        const lazySigner = { isDerivable: false, path: null, keyPair: null, getAddress, dispose: () => {} }
+
+        const acc = new WalletAccountEvmErc4337(lazySigner, SPONSORED_CONFIG)
+
+        expect(getAddress).not.toHaveBeenCalled()
+        expect(await acc.getAddress()).toBe(SAFE_ADDRESS)
+        expect(await acc.getAddress()).toBe(SAFE_ADDRESS)
+        expect(getAddress).toHaveBeenCalledTimes(1)
+      })
+
+      test('should throw on getAddress if the signer address is not a valid evm address', async () => {
+        const badSigner = { isDerivable: false, path: null, keyPair: null, getAddress: async () => 'not-an-address', dispose: () => {} }
+
+        await expect(new WalletAccountEvmErc4337(badSigner, SPONSORED_CONFIG).getAddress())
+          .rejects.toThrow(ValueError)
+      })
+    })
+
+    describe('constructor ownership of the seed signer', () => {
+      test('should wipe the seed signer if the construction fails', () => {
+        const disposeSpy = jest.spyOn(SeedSignerEvm.prototype, 'dispose')
+
+        expect(() => new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", { ...SPONSORED_CONFIG, safeModulesVersion: '0.2.0' }))
+          .toThrow(ConfigurationError)
+
+        expect(disposeSpy).toHaveBeenCalledTimes(1)
+
+        disposeSpy.mockRestore()
+      })
+
+      test.each([
+        ['no path and no configuration', [SEED_PHRASE]],
+        ['a path and no configuration', [SEED_PHRASE, "0'/0/0"]]
+      ])('should wipe the seed signer if the account is created with %s', (_, args) => {
+        const disposeSpy = jest.spyOn(SeedSignerEvm.prototype, 'dispose')
+
+        expect(() => new WalletAccountEvmErc4337(...args)).toThrow(ConfigurationError)
+
+        expect(disposeSpy).toHaveBeenCalledTimes(1)
+
+        disposeSpy.mockRestore()
+      })
+
+      test('should wipe the seed signer on disposal', () => {
+        const acc = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", SPONSORED_CONFIG)
+
+        acc.dispose()
+
+        expect(acc.keyPair.privateKey).toBeNull()
+      })
+    })
+
+    describe('fromPrivateKey', () => {
+      const TYPED_DATA = {
+        domain: { name: 'TestApp', version: '1', chainId: 1, verifyingContract: '0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC' },
+        types: { Mail: [{ name: 'contents', type: 'string' }] },
+        message: { contents: 'Hello' }
+      }
+
+      const TRANSACTION = { to: ACCOUNT.address, value: 1, data: '0x' }
+
+      let privateKeyAccount
+
+      beforeEach(() => {
+        privateKeyAccount = WalletAccountEvmErc4337.fromPrivateKey(ACCOUNT.keyPair.privateKey, SPONSORED_CONFIG)
+      })
+
+      afterEach(() => {
+        privateKeyAccount.dispose()
+      })
+
+      test('should create an account owned by the private key', async () => {
+        expect(privateKeyAccount).toBeInstanceOf(WalletAccountEvmErc4337)
+        expect(await privateKeyAccount.getAddress()).toBe(SAFE_ADDRESS)
+        expect(privateKeyAccount.path).toBeNull()
+        expect(toHex(privateKeyAccount.keyPair.privateKey)).toBe(ACCOUNT.keyPair.privateKey)
+        expect(toHex(privateKeyAccount.keyPair.publicKey)).toBe(ACCOUNT.keyPair.publicKey)
+      })
+
+      test('should sign like the equivalent seed account', async () => {
+        expect(await privateKeyAccount.sign('Dummy message to sign.')).toBe(await account.sign('Dummy message to sign.'))
+        expect(await privateKeyAccount.signTypedData(TYPED_DATA)).toBe(await account.signTypedData(TYPED_DATA))
+      })
+
+      test('should wipe the private key on disposal', () => {
+        privateKeyAccount.dispose()
+
+        expect(privateKeyAccount.keyPair.privateKey).toBeNull()
+      })
+
+      test('should wipe the private key if the construction fails', () => {
+        const disposeSpy = jest.spyOn(PrivateKeySignerEvm.prototype, 'dispose')
+
+        expect(() => WalletAccountEvmErc4337.fromPrivateKey(ACCOUNT.keyPair.privateKey, { ...SPONSORED_CONFIG, safeModulesVersion: '0.2.0' }))
+          .toThrow(ConfigurationError)
+
+        expect(disposeSpy).toHaveBeenCalledTimes(1)
+
+        disposeSpy.mockRestore()
+      })
+
+      test('should sign user operations through the signer typed data, without relying on its internals', async () => {
+        signUserOperationWithSignersMock.mockResolvedValue(DUMMY_OP_SIGNATURE)
+
+        await privateKeyAccount.signTransaction(TRANSACTION)
+
+        const [, [ownerSigner]] = signUserOperationWithSignersMock.mock.calls[0]
+
+        expect(ownerSigner.address).toBe(ACCOUNT.address)
+        expect(ownerSigner.signHash).toBeUndefined()
+        expect(await ownerSigner.signTypedData(TYPED_DATA)).toBe(await account.signTypedData(TYPED_DATA))
       })
     })
 
@@ -567,7 +733,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         // The user operation is signed in place, so the recorded argument carries the signature assigned after the call.
         expect(signUserOperationWithSignersMock).toHaveBeenCalledWith(
           { ...DUMMY_USER_OP, signature: DUMMY_OP_SIGNATURE },
-          [{ address: ACCOUNT.address, signHash: expect.any(Function) }],
+          [{ address: ACCOUNT.address, signTypedData: expect.any(Function) }],
           1n
         )
         expect(sendUserOperationMock).not.toHaveBeenCalled()

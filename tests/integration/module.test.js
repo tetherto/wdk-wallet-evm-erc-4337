@@ -20,7 +20,6 @@ const fundedWallet = new ethers.Wallet('0xac0974bec39a17e36ba4a6b4d238ff944bacb4
 const SEED_PHRASE = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 
 const ACCOUNT0 = {
-  index: 0,
   path: "m/44'/60'/0'/0/0",
   address: '0x405005C7c4422390F4B334F64Cf20E0b767131d0',
   keyPair: {
@@ -31,7 +30,6 @@ const ACCOUNT0 = {
 }
 
 const ACCOUNT1 = {
-  index: 1,
   path: "m/44'/60'/0'/0/1",
   address: '0xcC81e04BadA16DEf9e1AFB027B859bec42BE49dB',
   keyPair: {
@@ -183,7 +181,6 @@ describe('@wdk/wallet-evm-erc-4337', () => {
   test('should derive accounts with correct properties and safe addresses', async () => {
     const account0 = await wallet.getAccountByPath("0'/0/0")
 
-    expect(account0.index).toBe(ACCOUNT0.index)
     expect(account0.path).toBe(ACCOUNT0.path)
     expect(account0.keyPair).toEqual({
       privateKey: new Uint8Array(Buffer.from(ACCOUNT0.keyPair.privateKey, 'hex')),
@@ -394,10 +391,23 @@ describe('@wdk/wallet-evm-erc-4337', () => {
   test('should dispose the wallet and erase the private keys of the accounts', async () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 
-    const account0 = await wallet.getAccount(0)
-    const account1 = await wallet.getAccount(1)
+    // Disposing wipes the default signer, so use a dedicated wallet instead of the shared one.
+    const disposableWallet = new WalletManagerEvmErc4337(SEED_PHRASE, {
+      chainId: 1,
+      provider: 'http://localhost:8545',
+      bundlerUrl: 'http://localhost:4337',
+      paymasterUrl: 'http://localhost:3000?pimlico',
+      paymasterAddress,
+      safeModulesVersion: '0.3.0',
+      paymasterToken: {
+        address: MOCK_PAYMASTER_TOKEN_ADDRESS
+      }
+    })
 
-    wallet.dispose()
+    const account0 = await disposableWallet.getAccount(0)
+    const account1 = await disposableWallet.getAccount(1)
+
+    disposableWallet.dispose()
 
     const MESSAGE = 'Hello, world!'
 

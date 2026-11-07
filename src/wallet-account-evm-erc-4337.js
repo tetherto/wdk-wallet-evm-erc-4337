@@ -169,9 +169,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @throws {DisposalError} If the account has been disposed.
    */
   async sign (message) {
-    if (this.disposed) {
-      throw new DisposalError('The account has been disposed.')
-    }
+    this._guardDisposed()
 
     return await this._ownerAccount.sign(message)
   }
@@ -184,9 +182,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @throws {DisposalError} If the account has been disposed.
    */
   async signTypedData ({ domain, types, message }) {
-    if (this.disposed) {
-      throw new DisposalError('The account has been disposed.')
-    }
+    this._guardDisposed()
 
     return await this._ownerAccount.signTypedData({ domain, types, message })
   }
@@ -206,9 +202,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @throws {DisposalError} If the account has been disposed.
    */
   async signTransaction (tx, config) {
-    if (this.disposed) {
-      throw new DisposalError('The account has been disposed.')
-    }
+    this._guardDisposed()
 
     const mergedConfig = { ...this._config, ...config }
 
@@ -242,9 +236,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @throws {DisposalError} If the account has been disposed.
    */
   async approve (options) {
-    if (this.disposed) {
-      throw new DisposalError('The account has been disposed.')
-    }
+    this._guardDisposed()
 
     if (!this._provider) {
       throw new ProviderRequiredError('The wallet must be connected to a provider to approve funds.')
@@ -354,9 +346,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @throws {DisposalError} If the account has been disposed.
    */
   async sendTransaction (tx, config) {
-    if (this.disposed) {
-      throw new DisposalError('The account has been disposed.')
-    }
+    this._guardDisposed()
 
     const mergedConfig = { ...this._config, ...config }
 
@@ -400,9 +390,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @throws {DisposalError} If the account has been disposed.
    */
   async transfer (options, config) {
-    if (this.disposed) {
-      throw new DisposalError('The account has been disposed.')
-    }
+    this._guardDisposed()
 
     const mergedConfig = { ...this._config, ...config }
 
@@ -447,6 +435,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     this._ownerAccount.dispose()
 
     this._disposed = true
+  }
+
+  /** @private */
+  _guardDisposed () {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
   }
 
   /** @private */

@@ -164,6 +164,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      */
     dispose(): void;
     /** @private */
+    private _guardDisposed;
+    /** @private */
     private _prepareForSend;
     /** @private */
     private _buildAtNonce;

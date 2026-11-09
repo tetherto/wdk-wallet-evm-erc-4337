@@ -22,7 +22,7 @@ import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm/sig
 
 import { ENTRYPOINT_V7, calculateUserOperationMaxGasCost, fetchAccountNonce } from 'abstractionkit'
 
-import WalletAccountReadOnlyEvmErc4337, { DEFERRED_OWNER, FEE_TOLERANCE_COEFFICIENT } from './wallet-account-read-only-evm-erc-4337.js'
+import WalletAccountReadOnlyEvmErc4337, { FEE_TOLERANCE_COEFFICIENT } from './wallet-account-read-only-evm-erc-4337.js'
 
 /** @typedef {import('abstractionkit').UserOperationV7} UserOperationV7 */
 /** @typedef {import('abstractionkit').SafeAccountV0_3_0} SafeAccountV0_3_0 */
@@ -116,12 +116,10 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
         ]
       : [seedOrSigner, pathOrConfig]
 
-    const shouldWipeSignerOnDisposal = isSeed || Boolean(configuration?.shouldWipeSignerOnDisposal)
-
     try {
-      super(undefined, { ...configuration, [DEFERRED_OWNER]: true })
+      super(undefined, configuration)
     } catch (error) {
-      if (shouldWipeSignerOnDisposal) signer.dispose()
+      if (isSeed) signer.dispose()
 
       throw error
     }
@@ -140,7 +138,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @protected
      * @type {boolean}
      */
-    this._shouldWipeSignerOnDisposal = shouldWipeSignerOnDisposal
+    this._shouldWipeSignerOnDisposal = isSeed || Boolean(configuration.shouldWipeSignerOnDisposal)
 
     /** @private */
     this._signer = signer
@@ -182,7 +180,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   static fromPrivateKey (privateKey, config) {
     const signer = new PrivateKeySignerEvm(privateKey)
 
-    return new WalletAccountEvmErc4337(signer, { ...config, shouldWipeSignerOnDisposal: true })
+    try {
+      return new WalletAccountEvmErc4337(signer, { ...config, shouldWipeSignerOnDisposal: true })
+    } catch (error) {
+      signer.dispose()
+
+      throw error
+    }
   }
 
   /**

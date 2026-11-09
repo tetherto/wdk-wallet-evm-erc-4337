@@ -191,9 +191,6 @@ const SAFE_MODULES_MAP = {
 
 const PINNED_SAFE_ADDRESS = Symbol('pinnedSafeAddress')
 
-/** @internal */
-export const DEFERRED_OWNER = Symbol('deferredOwner')
-
 export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOnly {
   /**
    * Creates a new read-only evm [erc-4337](https://www.erc4337.io/docs) wallet account.
@@ -212,12 +209,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       throw new ConfigurationError(`Unsupported safe modules version: ${config.safeModulesVersion}`)
     }
 
-    const { [PINNED_SAFE_ADDRESS]: pinnedSafeAddress, [DEFERRED_OWNER]: deferredOwner, ...cleanConfig } = config
-    const [accountConfig, ownerAccountAddress] = pinnedSafeAddress === undefined && !deferredOwner
+    const { [PINNED_SAFE_ADDRESS]: pinnedSafeAddress, ...unpinnedConfig } = config
+    const [accountConfig, ownerAccountAddress] = address && !pinnedSafeAddress
       ? [config, address]
-      : [cleanConfig, undefined]
+      : [unpinnedConfig, undefined]
 
-    super(deferredOwner ? undefined : pinnedSafeAddress ?? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config))
+    super(pinnedSafeAddress ?? (address ? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config) : undefined))
 
     /**
      * The read-only evm erc-4337 wallet account configuration.

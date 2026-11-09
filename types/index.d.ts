@@ -12,7 +12,6 @@ export type WaitForTransactionOptions = import("@tetherto/wdk-wallet").WaitForTr
 export type FeeRates = import("@tetherto/wdk-wallet-evm").FeeRates;
 export type KeyPair = import("@tetherto/wdk-wallet-evm").KeyPair;
 export type SignerOptions = import("@tetherto/wdk-wallet-evm").SignerOptions;
-export type ISignerEvm = import("@tetherto/wdk-wallet-evm/signers").ISignerEvm;
 export type EvmErc4337Transaction = import("./src/wallet-account-read-only-evm-erc-4337.js").EvmErc4337Transaction;
 export type EvmErc4337GasOverrides = import("./src/wallet-account-read-only-evm-erc-4337.js").EvmErc4337GasOverrides;
 export type EvmErc4337TransferOptions = import("./src/wallet-account-read-only-evm-erc-4337.js").EvmErc4337TransferOptions;

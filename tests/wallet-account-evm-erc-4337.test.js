@@ -280,7 +280,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
       ])('should wipe the seed signer if the account is created with %s', (_, args) => {
         const disposeSpy = jest.spyOn(SeedSignerEvm.prototype, 'dispose')
 
-        expect(() => new WalletAccountEvmErc4337(...args)).toThrow(ConfigurationError)
+        expect(() => new WalletAccountEvmErc4337(...args)).toThrow(TypeError)
 
         expect(disposeSpy).toHaveBeenCalledTimes(1)
 

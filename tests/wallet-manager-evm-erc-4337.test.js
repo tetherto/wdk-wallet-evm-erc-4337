@@ -15,7 +15,7 @@ jest.unstable_mockModule('ethers', () => ({
   BrowserProvider: BrowserProviderMock
 }))
 
-const { default: WalletManagerEvmErc4337 } = await import('../index.js')
+const { default: WalletManagerEvmErc4337, ConfigurationError } = await import('../index.js')
 
 const SEED_PHRASE = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 
@@ -142,6 +142,18 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
       test('should throw if the path is invalid', async () => {
         await expect(wallet.getAccountByPath("a'/b/c"))
           .rejects.toThrow('invalid path component')
+      })
+
+      test('should wipe the derived signer if the account cannot be created', async () => {
+        const invalidWallet = new WalletManagerEvmErc4337(SEED_PHRASE, { ...SPONSORED_CONFIG, safeModulesVersion: '0.2.0' })
+        const disposeSpy = jest.spyOn(SeedSignerEvm.prototype, 'dispose')
+
+        await expect(invalidWallet.getAccountByPath("0'/0/0")).rejects.toThrow(ConfigurationError)
+
+        expect(disposeSpy).toHaveBeenCalledTimes(1)
+
+        disposeSpy.mockRestore()
+        invalidWallet.dispose()
       })
     })
 

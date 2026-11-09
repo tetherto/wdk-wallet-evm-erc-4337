@@ -166,7 +166,13 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
       if (this._accounts[key]) {
         childSigner.dispose()
       } else {
-        this._accounts[key] = new WalletAccountEvmErc4337(childSigner, { ...this._accountConfig(), shouldWipeSignerOnDisposal: true })
+        try {
+          this._accounts[key] = new WalletAccountEvmErc4337(childSigner, { ...this._accountConfig(), shouldWipeSignerOnDisposal: true })
+        } catch (error) {
+          childSigner.dispose()
+
+          throw error
+        }
       }
     }
 

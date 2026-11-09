@@ -81,11 +81,11 @@ that authenticate via the URL (e.g. an `apikey` query parameter) keep working un
 
 ## Signers
 
-The safe's owner can be any signer from `@tetherto/wdk-wallet-evm/signers`, not just a seed phrase.
+The safe's owner can be any evm signer, not just a seed phrase. The signers are re-exported from `@tetherto/wdk-wallet-evm-erc-4337/signers`, so you don't need to install `@tetherto/wdk-wallet-evm` yourself.
 
 ```javascript
 import WalletManagerEvmErc4337, { WalletAccountEvmErc4337 } from '@tetherto/wdk-wallet-evm-erc-4337'
-import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm/signers'
+import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm-erc-4337/signers'
 
 // The default signer must be derivable.
 const wallet = new WalletManagerEvmErc4337(new SeedSignerEvm(seedPhrase, "m/44'/60'"), config)

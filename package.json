@@ -68,6 +68,11 @@
       "bare": "./bare.js",
       "default": "./index.js"
     },
+    "./signers": {
+      "types": "./types/src/signers/index.d.ts",
+      "bare": "./src/signers/bare.js",
+      "default": "./src/signers/index.js"
+    },
     "./package": {
       "default": "./package.json"
     }
@@ -79,6 +84,7 @@
   "standard": {
     "ignore": [
       "bare.js",
+      "src/signers/bare.js",
       "tests/**/*.js"
     ]
   }

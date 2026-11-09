@@ -125,6 +125,7 @@ const DUMMY_USER_OP = {
   preVerificationGas: 30_000n,
   maxFeePerGas: 10_000_000_000n,
   maxPriorityFeePerGas: 1_000_000_000n,
+  paymaster: '0x888888888888Ec68A58AB8094Cc1AD20Ba3D2402',
   signature: '0x'
 }
 
@@ -624,6 +625,38 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         await expect(pmAccount.quoteSendTransaction(TRANSACTION))
           .rejects.toThrow(/paymasterAddress mismatch.*0x1111111111111111111111111111111111111111/)
+      })
+
+      test('should throw when the paymaster RPC returns no paymaster address', async () => {
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_USER_OP, paymaster: undefined },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+
+        const pmAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, PAYMASTER_TOKEN_CONFIG)
+
+        await expect(pmAccount.quoteSendTransaction(TRANSACTION))
+          .rejects.toThrow(new ConfigurationError('paymasterAddress mismatch: configured 0x888888888888Ec68A58AB8094Cc1AD20Ba3D2402 but the paymaster RPC returned no paymaster. ' +
+            'The generated ERC-20 approval would target an unexpected paymaster.'))
+      })
+
+      test('should throw when abstractionkit reports that the ERC-20 approval is not for the final paymaster', async () => {
+        const error = new actualAk.AbstractionKitError('PAYMASTER_ERROR', 'token paymaster mismatch', {
+          context: { approveSpender: '0x1111111111111111111111111111111111111111', finalPaymaster: PAYMASTER_TOKEN_CONFIG.paymasterAddress }
+        })
+
+        createPaymasterUserOperationMock.mockRejectedValue(error)
+
+        const pmAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, PAYMASTER_TOKEN_CONFIG)
+
+        const promise = pmAccount.quoteSendTransaction(TRANSACTION)
+
+        await expect(promise).rejects.toThrow(ConfigurationError)
+        await expect(promise).rejects.toMatchObject({
+          message: 'paymasterAddress mismatch: the paymaster RPC quoted 0x1111111111111111111111111111111111111111 ' +
+            'for the ERC-20 approval but returned 0x888888888888Ec68A58AB8094Cc1AD20Ba3D2402.',
+          cause: error
+        })
       })
 
       test('should pass through when the paymaster RPC returns the configured paymaster address (case-insensitive)', async () => {

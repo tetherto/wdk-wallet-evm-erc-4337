@@ -26,9 +26,10 @@ export class ConfigurationError extends ValueError {
    * Create a new configuration error.
    *
    * @param {string} message - The error message.
+   * @param {ErrorOptions} [options] - The error's options.
    */
-  constructor (message) {
-    super(message)
+  constructor (message, options) {
+    super(message, options)
 
     this.name = 'ConfigurationError'
   }

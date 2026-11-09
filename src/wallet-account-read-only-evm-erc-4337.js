@@ -1009,14 +1009,27 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       bundlerRpc,
       context,
       paymasterOverrides
-    )
+    ).catch((error) => {
+      // AbstractionKit throws this when the ERC-20 approval is not for the final paymaster.
+      if (error instanceof AbstractionKitError && error.context?.approveSpender !== undefined) {
+        const { approveSpender, finalPaymaster } = error.context
+
+        throw new ConfigurationError(
+          `paymasterAddress mismatch: the paymaster RPC quoted ${approveSpender} for the ERC-20 approval ` +
+          `but returned ${finalPaymaster || 'no paymaster'}.`,
+          { cause: error }
+        )
+      }
+
+      throw error
+    })
 
     const sponsoredOp = result.userOperation
 
-    if (mode === PaymasterMode.TOKEN && sponsoredOp.paymaster &&
-      sponsoredOp.paymaster.toLowerCase() !== config.paymasterAddress.toLowerCase()) {
+    if (mode === PaymasterMode.TOKEN &&
+      sponsoredOp.paymaster?.toLowerCase() !== config.paymasterAddress.toLowerCase()) {
       throw new ConfigurationError(
-        `paymasterAddress mismatch: configured ${config.paymasterAddress} but RPC ${config.paymasterUrl} returned ${sponsoredOp.paymaster}. ` +
+        `paymasterAddress mismatch: configured ${config.paymasterAddress} but the paymaster RPC returned ${sponsoredOp.paymaster || 'no paymaster'}. ` +
         'The generated ERC-20 approval would target an unexpected paymaster.'
       )
     }

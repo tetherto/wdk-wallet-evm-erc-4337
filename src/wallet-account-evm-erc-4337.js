@@ -277,7 +277,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       return { fee: mergedConfig.isSponsored ? 0n : WalletAccountEvmErc4337._getSignedUserOperationFee(tx) }
     }
 
-    const txKey = WalletAccountEvmErc4337._getTxKey(tx)
+    const txKey = WalletAccountEvmErc4337._getTxKey(tx, mergedConfig)
 
     if (mergedConfig.isSponsored) {
       this._quoteCache.set(txKey, { fee: 0n, createdAt: Date.now() })
@@ -408,7 +408,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     const nonce = await this._resolveNonce(config)
 
     if (nonce === undefined) {
-      const cached = this._consumeCachedQuote(tx)
+      const cached = this._consumeCachedQuote(tx, config)
       if (cached?.userOp) {
         const onChainNonce = await fetchAccountNonce(this._eip1193Provider, cached.smartAccount.entrypointAddress, cached.smartAccount.accountAddress)
         if (cached.userOp.nonce === onChainNonce) {
@@ -471,13 +471,22 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 
   /** @private */
-  static _getTxKey (tx) {
-    return JSON.stringify([tx].flat(), (_, v) => typeof v === 'bigint' ? v.toString() : v)
+  static _getTxKey (tx, config = {}) {
+    return JSON.stringify({
+      txs: [tx].flat(),
+      useNativeCoins: Boolean(config.useNativeCoins),
+      isSponsored: Boolean(config.isSponsored),
+      paymasterUrl: config.paymasterUrl ?? null,
+      paymasterHeaders: config.paymasterHeaders ?? null,
+      paymasterToken: config.paymasterToken?.address?.toLowerCase() ?? null,
+      paymasterAddress: config.paymasterAddress?.toLowerCase() ?? null,
+      sponsorshipPolicyId: config.sponsorshipPolicyId ?? null
+    }, (_, v) => typeof v === 'bigint' ? v.toString() : v)
   }
 
   /** @private */
-  _consumeCachedQuote (tx) {
-    const txKey = WalletAccountEvmErc4337._getTxKey(tx)
+  _consumeCachedQuote (tx, config) {
+    const txKey = WalletAccountEvmErc4337._getTxKey(tx, config)
     const quote = this._quoteCache.get(txKey)
 
     if (!quote) {

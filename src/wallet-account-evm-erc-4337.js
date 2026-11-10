@@ -477,11 +477,11 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       txs: [tx].flat(),
       useNativeCoins: Boolean(config.useNativeCoins),
       isSponsored: Boolean(config.isSponsored),
-      paymasterUrl: config.paymasterUrl ?? null,
-      paymasterHeaders: config.paymasterHeaders ?? null,
-      paymasterToken: config.paymasterToken?.address?.toLowerCase() ?? null,
-      paymasterAddress: config.paymasterAddress?.toLowerCase() ?? null,
-      sponsorshipPolicyId: config.sponsorshipPolicyId ?? null
+      paymasterUrl: config.paymasterUrl,
+      paymasterHeaders: config.paymasterHeaders,
+      paymasterToken: config.paymasterToken?.address?.toLowerCase(),
+      paymasterAddress: config.paymasterAddress?.toLowerCase(),
+      sponsorshipPolicyId: config.sponsorshipPolicyId
     }, (_, v) => typeof v === 'bigint' ? v.toString() : v)
   }
 

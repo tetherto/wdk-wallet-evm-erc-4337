@@ -97,6 +97,7 @@ const DUMMY_USER_OP = {
   preVerificationGas: 30_000n,
   maxFeePerGas: 10_000_000_000n,
   maxPriorityFeePerGas: 1_000_000_000n,
+  paymaster: '0x888888888888Ec68A58AB8094Cc1AD20Ba3D2402',
   signature: '0x'
 }
 

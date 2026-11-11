@@ -70,6 +70,19 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     private _safeAddress;
     /** @private */
     private _quoteCache;
+    /** @private */
+    private _disposed;
+    /**
+     * True once this account's own {@link dispose} method has been called.
+     *
+     * This reflects the account's lifecycle only. A caller-supplied signer disposed externally
+     * does not flip this flag -- the account is still considered alive until it is disposed itself,
+     * even though its signer-dependent methods will throw a {@link DisposalError} (propagated from
+     * the disposed signer) in the meantime.
+     *
+     * @type {boolean}
+     */
+    get disposed(): boolean;
     /**
      * The derivation path of this account (see [BIP-44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)),
      * or null if the account's signer is not bound to a BIP-44 position (e.g. private-key signers).
@@ -99,6 +112,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      *
      * @param {string} message - The message to sign.
      * @returns {Promise<string>} The message's signature.
+     * @throws {DisposalError} If the account, or the externally supplied signer it uses, has been disposed.
      */
     sign(message: string): Promise<string>;
     /**
@@ -106,6 +120,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      *
      * @param {TypedData} typedData - The typed data to sign.
      * @returns {Promise<string>} The typed data signature.
+     * @throws {DisposalError} If the account, or the externally supplied signer it uses, has been disposed.
      */
     signTypedData({ domain, types, message }: TypedData): Promise<string>;
     /**
@@ -120,6 +135,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
      * @throws {MaximumFeeExceededError} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
      * @throws {TransactionError} If the paymaster reports AA50 (the account cannot repay the paymaster).
+     * @throws {DisposalError} If the account, or the externally supplied signer it uses, has been disposed.
      */
     signTransaction(tx: EvmErc4337Transaction, config?: Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>): Promise<UserOperationV7>;
     /**
@@ -129,6 +145,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @returns {Promise<TransactionResult>} - The transaction's result.
      * @throws {ProviderRequiredError} - If the wallet is not connected to a provider.
      * @throws {ValueError} - If trying to approve usdts on ethereum with allowance not equal to zero (due to the usdt allowance reset requirement).
+     * @throws {DisposalError} If the account, or the externally supplied signer it uses, has been disposed.
      */
     approve(options: EvmErc4337ApproveOptions): Promise<TransactionResult>;
     /**
@@ -166,6 +183,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @throws {MaximumFeeExceededError} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
      * @throws {ValueError} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
      * @throws {TransactionError} If the paymaster reports AA50 (the account cannot repay the paymaster).
+     * @throws {DisposalError} If the account, or the externally supplied signer it uses, has been disposed.
      */
     sendTransaction(tx: EvmErc4337Transaction | EvmErc4337Transaction[] | UserOperationV7, config?: Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>): Promise<TransactionResult>;
     /**
@@ -181,6 +199,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @throws {MaximumFeeExceededError} If the transaction is not sponsored, and the transfer's cost surpasses the transfer max. fee option.
      * @throws {ValueError} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
      * @throws {TransactionError} If the paymaster reports AA50 (the account cannot repay the paymaster).
+     * @throws {DisposalError} If the account, or the externally supplied signer it uses, has been disposed.
      */
     transfer(options: EvmErc4337TransferOptions, config?: Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>): Promise<TransferResult>;
     /**
@@ -200,6 +219,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * Disposes the wallet account, erasing the private key from the memory.
      */
     dispose(): void;
+    /** @private */
+    private _guardDisposed;
     /** @private */
     private _prepareForSend;
     /** @private */

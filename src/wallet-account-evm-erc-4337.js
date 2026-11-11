@@ -97,7 +97,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     this._ownerAccount = ownerAccount
 
     /**
-     * Cached quotes from fee estimations, keyed by serialized transaction.
+     * Cached quotes from fee estimations, keyed by serialized transaction and paymaster configuration.
      *
      * @private
      * @type {Map<string, TransactionQuote>}
@@ -249,8 +249,9 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * Quotes the costs of a send transaction operation.
    *
    * The result is cached internally for up to 2 minutes. A subsequent `sendTransaction` with the
-   * same transaction reuses the cached operation — skipping the gas-estimation and paymaster
-   * round-trips — after a lightweight on-chain nonce check, re-quoting only if the nonce has moved.
+   * same transaction and paymaster configuration reuses the cached operation — skipping the
+   * gas-estimation and paymaster round-trips — after a lightweight on-chain nonce check, re-quoting
+   * only if the nonce has moved.
    *
    * In a batched call (`tx` passed as `[tx1, tx2, ...]`), only the gas overrides on `tx1` are
    * honored — a UserOperation has a single set of gas fields regardless of how many calls it batches.
@@ -277,7 +278,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       return { fee: mergedConfig.isSponsored ? 0n : WalletAccountEvmErc4337._getSignedUserOperationFee(tx) }
     }
 
-    const txKey = WalletAccountEvmErc4337._getTxKey(tx)
+    const txKey = WalletAccountEvmErc4337._getTxKey(tx, mergedConfig)
 
     if (mergedConfig.isSponsored) {
       this._quoteCache.set(txKey, { fee: 0n, createdAt: Date.now() })
@@ -408,7 +409,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     const nonce = await this._resolveNonce(config)
 
     if (nonce === undefined) {
-      const cached = this._consumeCachedQuote(tx)
+      const cached = this._consumeCachedQuote(tx, config)
       if (cached?.userOp) {
         const onChainNonce = await fetchAccountNonce(this._eip1193Provider, cached.smartAccount.entrypointAddress, cached.smartAccount.accountAddress)
         if (cached.userOp.nonce === onChainNonce) {
@@ -471,13 +472,22 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 
   /** @private */
-  static _getTxKey (tx) {
-    return JSON.stringify([tx].flat(), (_, v) => typeof v === 'bigint' ? v.toString() : v)
+  static _getTxKey (tx, config = {}) {
+    return JSON.stringify({
+      txs: [tx].flat(),
+      useNativeCoins: Boolean(config.useNativeCoins),
+      isSponsored: Boolean(config.isSponsored),
+      paymasterUrl: config.paymasterUrl,
+      paymasterHeaders: config.paymasterHeaders,
+      paymasterToken: config.paymasterToken?.address?.toLowerCase(),
+      paymasterAddress: config.paymasterAddress?.toLowerCase(),
+      sponsorshipPolicyId: config.sponsorshipPolicyId
+    }, (_, v) => typeof v === 'bigint' ? v.toString() : v)
   }
 
   /** @private */
-  _consumeCachedQuote (tx) {
-    const txKey = WalletAccountEvmErc4337._getTxKey(tx)
+  _consumeCachedQuote (tx, config) {
+    const txKey = WalletAccountEvmErc4337._getTxKey(tx, config)
     const quote = this._quoteCache.get(txKey)
 
     if (!quote) {

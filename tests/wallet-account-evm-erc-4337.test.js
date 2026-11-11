@@ -338,6 +338,62 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(createPaymasterUserOperationMock).toHaveBeenCalledTimes(1)
       })
 
+      test('should not reuse a user operation quoted with a different paymaster address', async () => {
+        const OTHER_PAYMASTER_ADDRESS = '0x1111111111111111111111111111111111111111'
+
+        signUserOperationWithSignersMock.mockResolvedValue(DUMMY_OP_SIGNATURE)
+        sendUserOperationMock.mockResolvedValue(DUMMY_USER_OP_HASH)
+        createPaymasterUserOperationMock
+          .mockResolvedValueOnce({
+            userOperation: { ...DUMMY_USER_OP, paymaster: OTHER_PAYMASTER_ADDRESS },
+            tokenQuote: { tokenCost: 500_000n }
+          })
+          .mockResolvedValue({
+            userOperation: { ...DUMMY_USER_OP },
+            tokenQuote: { tokenCost: 500_000n }
+          })
+
+        const pmAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", PAYMASTER_TOKEN_CONFIG)
+
+        await pmAccount.quoteSendTransaction(TRANSACTION, { paymasterAddress: OTHER_PAYMASTER_ADDRESS })
+        const { hash } = await pmAccount.sendTransaction(TRANSACTION)
+
+        expect(hash).toBe(DUMMY_USER_OP_HASH)
+        expect(createPaymasterUserOperationMock).toHaveBeenCalledTimes(2)
+        expect(sendUserOperationMock).toHaveBeenCalledWith(
+          { ...DUMMY_USER_OP, signature: DUMMY_OP_SIGNATURE },
+          actualAk.ENTRYPOINT_V7
+        )
+      })
+
+      test('should not reuse a user operation quoted with a different paymaster url', async () => {
+        const OTHER_PAYMASTER_DATA = '0xdeadbeef'
+
+        signUserOperationWithSignersMock.mockResolvedValue(DUMMY_OP_SIGNATURE)
+        sendUserOperationMock.mockResolvedValue(DUMMY_USER_OP_HASH)
+        createPaymasterUserOperationMock
+          .mockResolvedValueOnce({
+            userOperation: { ...DUMMY_USER_OP, paymasterData: OTHER_PAYMASTER_DATA },
+            tokenQuote: { tokenCost: 500_000n }
+          })
+          .mockResolvedValue({
+            userOperation: { ...DUMMY_USER_OP },
+            tokenQuote: { tokenCost: 500_000n }
+          })
+
+        const pmAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", PAYMASTER_TOKEN_CONFIG)
+
+        await pmAccount.quoteSendTransaction(TRANSACTION, { paymasterUrl: 'https://dummy-other-paymaster.url' })
+        const { hash } = await pmAccount.sendTransaction(TRANSACTION)
+
+        expect(hash).toBe(DUMMY_USER_OP_HASH)
+        expect(createPaymasterUserOperationMock).toHaveBeenCalledTimes(2)
+        expect(sendUserOperationMock).toHaveBeenCalledWith(
+          { ...DUMMY_USER_OP, signature: DUMMY_OP_SIGNATURE },
+          actualAk.ENTRYPOINT_V7
+        )
+      })
+
       test('should throw if the fee exceeds the transaction max fee configuration', async () => {
         createPaymasterUserOperationMock.mockResolvedValue({
           userOperation: { ...DUMMY_USER_OP },

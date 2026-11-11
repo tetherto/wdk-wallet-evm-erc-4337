@@ -92,8 +92,9 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * Quotes the costs of a send transaction operation.
      *
      * The result is cached internally for up to 2 minutes. A subsequent `sendTransaction` with the
-     * same transaction reuses the cached operation — skipping the gas-estimation and paymaster
-     * round-trips — after a lightweight on-chain nonce check, re-quoting only if the nonce has moved.
+     * same transaction and paymaster configuration reuses the cached operation — skipping the
+     * gas-estimation and paymaster round-trips — after a lightweight on-chain nonce check, re-quoting
+     * only if the nonce has moved.
      *
      * In a batched call (`tx` passed as `[tx1, tx2, ...]`), only the gas overrides on `tx1` are
      * honored — a UserOperation has a single set of gas fields regardless of how many calls it batches.

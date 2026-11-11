@@ -210,11 +210,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     }
 
     const { [PINNED_SAFE_ADDRESS]: pinnedSafeAddress, ...unpinnedConfig } = config
-    const [accountConfig, ownerAccountAddress] = pinnedSafeAddress === undefined
+    const [accountConfig, ownerAccountAddress] = address && !pinnedSafeAddress
       ? [config, address]
       : [unpinnedConfig, undefined]
 
-    super(pinnedSafeAddress ?? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config))
+    super(pinnedSafeAddress ?? (address ? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config) : undefined))
 
     /**
      * The read-only evm erc-4337 wallet account configuration.
@@ -547,11 +547,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async verify (message, signature) {
-    if (this._ownerAccountAddress === undefined) {
+    const ownerAddress = await this._getOwnerAddress()
+
+    if (ownerAddress === undefined) {
       throw new UnsupportedOperationError('verify(message, signature)')
     }
 
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, {
+    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(ownerAddress, {
       ...this._config,
       provider: this._provider
     })
@@ -567,11 +569,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async verifyTypedData (typedData, signature) {
-    if (this._ownerAccountAddress === undefined) {
+    const ownerAddress = await this._getOwnerAddress()
+
+    if (ownerAddress === undefined) {
       throw new UnsupportedOperationError('verifyTypedData(typedData, signature)')
     }
 
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(this._ownerAccountAddress, {
+    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(ownerAddress, {
       ...this._config,
       provider: this._provider
     })
@@ -639,11 +643,23 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       return this._deployedSmartAccount
     }
 
-    if (this._ownerAccountAddress === undefined) {
+    const ownerAddress = await this._getOwnerAddress()
+
+    if (ownerAddress === undefined) {
       throw new ConfigurationError(`The safe at '${safeAddress}' is not deployed. Deploying it requires the owner's address, which an account created from a safe address does not have.`)
     }
 
-    return SafeAccount030.initializeNewAccount([this._ownerAccountAddress], overrides)
+    return SafeAccount030.initializeNewAccount([ownerAddress], overrides)
+  }
+
+  /**
+   * Returns the safe owner's address.
+   *
+   * @protected
+   * @returns {Promise<string | undefined>} The owner's address, or `undefined` if the account was created from a safe address.
+   */
+  async _getOwnerAddress () {
+    return this._ownerAccountAddress
   }
 
   /**

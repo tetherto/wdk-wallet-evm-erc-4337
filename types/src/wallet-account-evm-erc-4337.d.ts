@@ -1,13 +1,45 @@
 /** @implements {IWalletAccount} */
 export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc4337 implements IWalletAccount<UserOperationV7> {
     /**
-     * Creates a new evm [erc-4337](https://www.erc4337.io/docs) wallet account.
+     * Creates a new evm [erc-4337](https://www.erc4337.io/docs) wallet account whose safe owner is a raw private key.
      *
-     * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
-     * @param {string} path - The BIP-44 derivation path (e.g. "0'/0/0").
+     * The account owns the key and wipes it on {@link dispose}.
+     *
+     * @param {string | Uint8Array} privateKey - The raw private key (hex string with or without 0x, or 32 bytes).
      * @param {EvmErc4337WalletConfig} config - The configuration object.
+     * @returns {WalletAccountEvmErc4337} The wallet account.
+     */
+    static fromPrivateKey(privateKey: string | Uint8Array, config: EvmErc4337WalletConfig): WalletAccountEvmErc4337;
+    /**
+     * Creates a new evm [erc-4337](https://www.erc4337.io/docs) wallet account from a BIP-39 seed.
+     *
+     * @overload
+     * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
+     * @param {string} path - The BIP-44 derivation path, relative to "m/44'/60'" (e.g. "0'/0/0").
+     * @param {EvmErc4337WalletConfig} config - The configuration object.
+     * @throws {ValueError} If the given seed phrase is invalid.
      */
     constructor(seed: string | Uint8Array, path: string, config: EvmErc4337WalletConfig);
+    /**
+     * Creates a new evm [erc-4337](https://www.erc4337.io/docs) wallet account from a BIP-39 seed at path m/44'/60'/0'/0/0.
+     *
+     * @overload
+     * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
+     * @param {EvmErc4337WalletConfig} config - The configuration object.
+     * @throws {ValueError} If the given seed phrase is invalid.
+     */
+    constructor(seed: string | Uint8Array, config: EvmErc4337WalletConfig);
+    /**
+     * Creates a new evm [erc-4337](https://www.erc4337.io/docs) wallet account using a signer as the safe's owner.
+     *
+     * The signer is wiped on {@link dispose} only if `shouldWipeSignerOnDisposal` is set. The safe's address is
+     * predicted from the signer's address on the first call to {@link getAddress}.
+     *
+     * @overload
+     * @param {ISignerEvm} signer - A signer implementing the EVM signer interface.
+     * @param {EvmErc4337WalletConfig & SignerOptions} config - The configuration object.
+     */
+    constructor(signer: ISignerEvm, config: EvmErc4337WalletConfig & SignerOptions);
     /**
      * Creates a read-only account for a safe whose address is already known. Not supported on the writable
      * account: a safe address cannot produce a signer. Use {@link WalletAccountReadOnlyEvmErc4337.fromSafeAddress}.
@@ -25,22 +57,26 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @type {EvmErc4337WalletConfig}
      */
     protected _config: EvmErc4337WalletConfig;
+    /**
+     * If true, disposes the signer on calls to the 'dispose' method.
+     *
+     * @protected
+     * @type {boolean}
+     */
+    protected _shouldWipeSignerOnDisposal: boolean;
     /** @private */
-    private _ownerAccount;
+    private _signer;
+    /** @private */
+    private _safeAddress;
     /** @private */
     private _quoteCache;
     /**
-     * The derivation path's index of this account.
+     * The derivation path of this account (see [BIP-44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)),
+     * or null if the account's signer is not bound to a BIP-44 position (e.g. private-key signers).
      *
-     * @type {number}
+     * @type {string | null}
      */
-    get index(): number;
-    /**
-     * The derivation path of this account (see [BIP-44](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)).
-     *
-     * @type {string}
-     */
-    get path(): string;
+    get path(): string | null;
     /**
      * The account's key pair.
      *
@@ -48,9 +84,16 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * it's strongly recommended to treat the key pair as a read-only view of the keys. While it's still technically possible to alter their
      * content, client code should never do so.
      *
-     * @type {KeyPair}
+     * @type {KeyPair | null}
      */
-    get keyPair(): KeyPair;
+    get keyPair(): KeyPair | null;
+    /**
+     * Returns the account's address, which is the safe's address predicted from the signer's address.
+     *
+     * @returns {Promise<string>} The account's address.
+     * @throws {ValueError} If the signer's address is not a well-formed evm address.
+     */
+    getAddress(): Promise<string>;
     /**
      * Signs a message.
      *
@@ -147,6 +190,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      */
     toReadOnlyAccount(): Promise<WalletAccountReadOnlyEvmErc4337>;
     /**
+     * Returns the safe owner's address, as given by the signer.
+     *
+     * @protected
+     * @returns {Promise<string>} The owner's address.
+     */
+    protected _getOwnerAddress(): Promise<string>;
+    /**
      * Disposes the wallet account, erasing the private key from the memory.
      */
     dispose(): void;
@@ -171,6 +221,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 export type Eip1193Provider = import("ethers").Eip1193Provider;
 export type IWalletAccount<TSignedTransaction> = import("@tetherto/wdk-wallet").IWalletAccount<TSignedTransaction>;
 export type KeyPair = import("@tetherto/wdk-wallet-evm").KeyPair;
+export type ISignerEvm = import("@tetherto/wdk-wallet-evm/signers").ISignerEvm;
+export type SignerOptions = import("@tetherto/wdk-wallet-evm").SignerOptions;
 export type EvmErc4337Transaction = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337Transaction;
 export type EvmErc4337GasOverrides = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337GasOverrides;
 export type EvmErc4337TransferOptions = import("./wallet-account-read-only-evm-erc-4337.js").EvmErc4337TransferOptions;

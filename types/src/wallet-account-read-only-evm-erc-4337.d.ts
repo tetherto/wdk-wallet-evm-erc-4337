@@ -235,6 +235,13 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     protected _getSmartAccount(config?: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): Promise<import('abstractionkit').SafeAccountV0_3_0>;
     /**
+     * Returns the safe owner's address.
+     *
+     * @protected
+     * @returns {Promise<string | undefined>} The owner's address, or `undefined` if the account was created from a safe address.
+     */
+    protected _getOwnerAddress(): Promise<string | undefined>;
+    /**
      * Builds the RPC transport for an AbstractionKit client (Bundler / Erc7677Paymaster).
      *
      * When `headers` are provided, the transport injects them on every request (e.g.

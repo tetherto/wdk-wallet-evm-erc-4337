@@ -77,6 +77,31 @@ that authenticate via the URL (e.g. an `apikey` query parameter) keep working un
 - **Per-Call Config Overrides**: Switch gas payment modes on a per-transaction basis
 - **Parallel Nonce Lanes**: Send independent operations concurrently via ERC-4337 two-dimensional nonces (`parallel: true` or a reusable `nonceKey`)
 - **Secure Memory Disposal**: Clear private keys from memory when done
+- **Pluggable Signers**: Use a seed phrase, a derivable signer, or a private-key signer as the safe's owner
+
+## Signers
+
+The safe's owner can be any evm signer, not just a seed phrase. The signers are re-exported from `@tetherto/wdk-wallet-evm-erc-4337/signers`, so you don't need to install `@tetherto/wdk-wallet-evm` yourself.
+
+```javascript
+import WalletManagerEvmErc4337, { WalletAccountEvmErc4337 } from '@tetherto/wdk-wallet-evm-erc-4337'
+import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm-erc-4337/signers'
+
+// The default signer must be derivable.
+const wallet = new WalletManagerEvmErc4337(new SeedSignerEvm(seedPhrase, "m/44'/60'"), config)
+
+// Other signers are registered by name.
+wallet.addSigner('treasury', new PrivateKeySignerEvm(privateKey))
+const treasury = await wallet.getAccount('treasury')
+
+// Standalone accounts, without a wallet manager.
+const account = WalletAccountEvmErc4337.fromPrivateKey(privateKey, config)
+```
+
+**Notes:**
+- A wallet created from a seed wipes its default signer on `dispose()`. Signers you supply are never wiped by the wallet, and an account wipes a signer you give it only with `shouldWipeSignerOnDisposal: true`.
+- The safe's address is predicted from the signer's `getAddress()` on first use, so signers that only provide their address asynchronously (e.g. hardware signers) are supported.
+- `account.path` and `account.keyPair` are `null` for signers without a derivation path or key material.
 
 ## Concurrent / Parallel Sends (nonce lanes)
 

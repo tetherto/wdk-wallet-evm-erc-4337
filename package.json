@@ -32,8 +32,8 @@
   },
   "dependencies": {
     "@tetherto/wdk-failover-provider": "1.0.0-beta.2",
-    "@tetherto/wdk-wallet": "1.0.0-beta.17",
-    "@tetherto/wdk-wallet-evm": "1.0.0-beta.19",
+    "@tetherto/wdk-wallet": "1.0.0-beta.25",
+    "@tetherto/wdk-wallet-evm": "1.0.0-beta.26",
     "abstractionkit": "0.4.3",
     "bare-node-runtime": "^1.5.2",
     "ethers": "6.17.0"
@@ -68,6 +68,11 @@
       "bare": "./bare.js",
       "default": "./index.js"
     },
+    "./signers": {
+      "types": "./types/src/signers/index.d.ts",
+      "bare": "./src/signers/bare.js",
+      "default": "./src/signers/index.js"
+    },
     "./package": {
       "default": "./package.json"
     }
@@ -79,6 +84,7 @@
   "standard": {
     "ignore": [
       "bare.js",
+      "src/signers/bare.js",
       "tests/**/*.js"
     ]
   }

@@ -73,7 +73,7 @@ that authenticate via the URL (e.g. an `apikey` query parameter) keep working un
 - **BIP-44 Derivation Paths**: Standard Ethereum derivation (m/44'/60')
 - **Multi-Account Management**: Derive multiple smart accounts from a single seed phrase
 - **ERC-20 Token Support**: Query balances and transfer tokens via UserOperations
-- **Message Signing**: Sign and verify messages with the underlying EOA key
+- **Message Signing**: Sign messages and typed data as the Safe (ERC-1271 / SafeMessage), and verify them against the Safe
 - **Per-Call Config Overrides**: Switch gas payment modes on a per-transaction basis
 - **Parallel Nonce Lanes**: Send independent operations concurrently via ERC-4337 two-dimensional nonces (`parallel: true` or a reusable `nonceKey`)
 - **Secure Memory Disposal**: Clear private keys from memory when done

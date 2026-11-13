@@ -373,6 +373,38 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     expect(isValid).toBe(true)
   }, TIMEOUT)
 
+  test('should sign messages and typed data that the deployed safe accepts via erc-1271', async () => {
+    const account0 = await wallet.getAccountByPath("0'/0/0")
+
+    expect(await ethersProvider.getCode(ACCOUNT0.safeAddress)).not.toBe('0x')
+
+    const safe = new ethers.Contract(ACCOUNT0.safeAddress, [
+      'function isValidSignature(bytes32 _dataHash, bytes _signature) view returns (bytes4)'
+    ], ethersProvider)
+
+    const MESSAGE = 'Hello, world!'
+    const messageSignature = await account0.sign(MESSAGE)
+    expect(await safe.isValidSignature(ethers.hashMessage(MESSAGE), messageSignature)).toBe('0x1626ba7e')
+
+    const TYPED_DATA = {
+      domain: { name: 'Test', version: '1', chainId: 1, verifyingContract: '0x0000000000000000000000000000000000000000' },
+      types: { Message: [{ name: 'content', type: 'string' }] },
+      message: { content: 'Hello, world!' }
+    }
+    const typedDataSignature = await account0.signTypedData(TYPED_DATA)
+    const typedDataHash = ethers.TypedDataEncoder.hash(TYPED_DATA.domain, TYPED_DATA.types, TYPED_DATA.message)
+    expect(await safe.isValidSignature(typedDataHash, typedDataSignature)).toBe('0x1626ba7e')
+  }, TIMEOUT)
+
+  test('should reject a raw owner signature when verifying against the deployed safe', async () => {
+    const account0 = await wallet.getAccountByPath("0'/0/0")
+
+    const MESSAGE = 'Hello, world!'
+    const rawOwnerSignature = await new ethers.Wallet('0x' + ACCOUNT0.keyPair.privateKey).signMessage(MESSAGE)
+
+    expect(await account0.verify(MESSAGE, rawOwnerSignature)).toBe(false)
+  }, TIMEOUT)
+
   test('should fetch multiple token balances via getTokenBalances multicall', async () => {
     const account = await wallet.getAccountByPath("0'/0/0")
 

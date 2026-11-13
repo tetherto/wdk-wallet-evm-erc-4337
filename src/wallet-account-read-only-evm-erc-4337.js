@@ -14,7 +14,7 @@
 
 'use strict'
 
-import { getAddress, isAddress, isHexString } from 'ethers'
+import { Contract, TypedDataEncoder, getAddress, hashMessage, isAddress, isError, isHexString, verifyTypedData } from 'ethers'
 
 import { WalletAccountReadOnly, NoSuchElementError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
@@ -28,6 +28,7 @@ import {
   Erc7677Paymaster,
   HttpTransport,
   ENTRYPOINT_V7,
+  SAFE_MESSAGE_MODULE_TYPE,
   calculateUserOperationMaxGasCost
 } from 'abstractionkit'
 
@@ -36,6 +37,12 @@ import {
 /** @typedef {import('abstractionkit').SafeAccountV0_3_0} SafeAccountV0_3_0 */
 
 import { ConfigurationError } from './errors.js'
+
+const ERC1271_MAGIC_VALUE = '0x1626ba7e'
+
+const ERC1271_ABI = [
+  'function isValidSignature(bytes32 _dataHash, bytes _signature) view returns (bytes4)'
+]
 
 const PaymasterMode = {
   NATIVE: 'native',
@@ -279,6 +286,9 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     this._deployedSmartAccount = undefined
 
     /** @private */
+    this._safeDeployed = false
+
+    /** @private */
     this._evmReadOnlyAccount = undefined
   }
 
@@ -303,8 +313,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Creates a read-only account for a safe whose address is already known.
    *
    * The address is used as the account's own address, so balances, allowances and quotes resolve against that
-   * safe. Its owner is unknown to the account: {@link verify} and {@link verifyTypedData} throw, and the safe must
-   * already be deployed for {@link quoteSendTransaction} and {@link quoteTransfer}.
+   * safe. Its owner is unknown to the account, so the safe must already be deployed for {@link verify},
+   * {@link verifyTypedData}, {@link quoteSendTransaction} and {@link quoteTransfer}.
    *
    * @param {string} safeAddress - The safe's evm address. Normalized to its checksummed form.
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
@@ -539,48 +549,35 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Verifies a message's signature.
+   * Verifies a message's signature, as produced by the safe (ERC-1271 / SafeMessage).
+   *
+   * If the safe is deployed, the signature is checked on-chain through the safe's `isValidSignature`. Otherwise,
+   * it is checked offline against the safe's owner.
    *
    * @param {string} message - The original message.
    * @param {string} signature - The signature to verify.
-   * @throws {UnsupportedOperationError} If the account was created from a safe address, whose owner is unknown.
+   * @throws {UnsupportedOperationError} If the account was created from a safe address whose safe is not deployed.
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async verify (message, signature) {
-    const ownerAddress = await this._getOwnerAddress()
-
-    if (ownerAddress === undefined) {
-      throw new UnsupportedOperationError('verify(message, signature)')
-    }
-
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(ownerAddress, {
-      ...this._config,
-      provider: this._provider
-    })
-    return await evmReadOnlyAccount.verify(message, signature)
+    return await this._verifySafeMessage(hashMessage(message), signature, 'verify(message, signature)')
   }
 
   /**
-   * Verifies a typed data signature.
+   * Verifies a typed data signature, as produced by the safe (ERC-1271 / SafeMessage).
+   *
+   * If the safe is deployed, the signature is checked on-chain through the safe's `isValidSignature`. Otherwise,
+   * it is checked offline against the safe's owner.
    *
    * @param {TypedData} typedData - The typed data to verify.
    * @param {string} signature - The signature to verify.
-   * @throws {UnsupportedOperationError} If the account was created from a safe address, whose owner is unknown.
+   * @throws {UnsupportedOperationError} If the account was created from a safe address whose safe is not deployed.
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async verifyTypedData (typedData, signature) {
-    const ownerAddress = await this._getOwnerAddress()
+    const hash = TypedDataEncoder.hash(typedData.domain, typedData.types, typedData.message)
 
-    if (ownerAddress === undefined) {
-      throw new UnsupportedOperationError('verifyTypedData(typedData, signature)')
-    }
-
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(ownerAddress, {
-      ...this._config,
-      provider: this._provider
-    })
-
-    return await evmReadOnlyAccount.verifyTypedData(typedData, signature)
+    return await this._verifySafeMessage(hash, signature, 'verifyTypedData(typedData, signature)')
   }
 
   /**
@@ -638,7 +635,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     const overrides = WalletAccountReadOnlyEvmErc4337._getInitCodeOverrides(config)
     const safeAddress = await this.getAddress()
 
-    if (await SafeAccount030.isDeployed(safeAddress, this._eip1193Provider)) {
+    if (await this._isSafeDeployed()) {
       this._deployedSmartAccount = new SafeAccount030(safeAddress, overrides)
       return this._deployedSmartAccount
     }
@@ -650,6 +647,108 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     }
 
     return SafeAccount030.initializeNewAccount([ownerAddress], overrides)
+  }
+
+  /**
+   * Wraps a hash in the safe's SafeMessage EIP-712 typed data, which is what the safe's ERC-1271
+   * `isValidSignature` expects its owners to have signed.
+   *
+   * @protected
+   * @param {string} hash - The hash of the message or typed data (EIP-191 / EIP-712).
+   * @returns {Promise<TypedData>} The SafeMessage typed data.
+   */
+  async _getSafeMessageTypedData (hash) {
+    const [safeAddress, chainId] = await Promise.all([this.getAddress(), this._getChainId()])
+
+    return {
+      domain: { chainId: Number(chainId), verifyingContract: safeAddress },
+      types: SAFE_MESSAGE_MODULE_TYPE,
+      message: { message: hash }
+    }
+  }
+
+  /**
+   * Verifies a SafeMessage signature over a hash.
+   *
+   * @protected
+   * @param {string} hash - The hash of the message or typed data (EIP-191 / EIP-712).
+   * @param {string} signature - The signature to verify.
+   * @param {string} methodName - The calling method's name, used in the error if verification is unsupported.
+   * @throws {UnsupportedOperationError} If the safe is not deployed and its owner is unknown.
+   * @returns {Promise<boolean>} True if the signature is valid.
+   */
+  async _verifySafeMessage (hash, signature, methodName) {
+    if (await this._isSafeDeployed()) {
+      const safe = new Contract(await this.getAddress(), ERC1271_ABI, this._provider)
+
+      try {
+        const result = await safe.isValidSignature(hash, signature)
+
+        return result.toLowerCase() === ERC1271_MAGIC_VALUE
+      } catch (error) {
+        if (WalletAccountReadOnlyEvmErc4337._isInvalidSignatureError(error)) {
+          return false
+        }
+
+        throw error
+      }
+    }
+
+    const ownerAddress = await this._getOwnerAddress()
+
+    if (ownerAddress === undefined) {
+      throw new UnsupportedOperationError(methodName)
+    }
+
+    const { domain, types, message } = await this._getSafeMessageTypedData(hash)
+
+    try {
+      const signer = verifyTypedData(domain, types, message, signature)
+
+      return signer.toLowerCase() === ownerAddress.toLowerCase()
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Returns whether an `isValidSignature` error means the signature is invalid (revert, bad input or output),
+   * rather than a failed check (e.g. a network error). ethers reports any EIP-1193 `eth_call` error as a CALL_EXCEPTION.
+   *
+   * @private
+   * @param {unknown} error - The error.
+   * @returns {boolean} True if the error means that the signature is invalid.
+   */
+  static _isInvalidSignatureError (error) {
+    if (isError(error, 'INVALID_ARGUMENT') || isError(error, 'BAD_DATA')) {
+      return true
+    }
+
+    if (!isError(error, 'CALL_EXCEPTION')) {
+      return false
+    }
+
+    if (error.data && error.data !== '0x') {
+      return true
+    }
+
+    const rpcError = error.info?.error
+
+    return rpcError?.code === 3 || /revert/i.test(rpcError?.message ?? '')
+  }
+
+  /**
+   * Returns whether the safe is deployed. A safe cannot be undeployed, so a positive result is cached.
+   *
+   * @protected
+   * @returns {Promise<boolean>} True if the safe is deployed.
+   */
+  async _isSafeDeployed () {
+    if (!this._safeDeployed) {
+      this._safeDeployed = await SafeAccount030.isDeployed(await this.getAddress(), this._eip1193Provider)
+    }
+
+    return this._safeDeployed
   }
 
   /**

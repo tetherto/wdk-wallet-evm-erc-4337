@@ -14,7 +14,7 @@
 
 'use strict'
 
-import { Contract, hexlify, keccak256, randomBytes, toUtf8Bytes } from 'ethers'
+import { Contract, TypedDataEncoder, hashMessage, hexlify, keccak256, randomBytes, toUtf8Bytes } from 'ethers'
 
 import { DisposalError, MaximumFeeExceededError, ProviderRequiredError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
@@ -242,7 +242,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 
   /**
-   * Signs a message.
+   * Signs a message as the safe (ERC-1271 / SafeMessage), so the safe's `isValidSignature` accepts it.
    *
    * @param {string} message - The message to sign.
    * @returns {Promise<string>} The message's signature.
@@ -251,11 +251,11 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   async sign (message) {
     this._guardDisposed()
 
-    return await this._signer.sign(message)
+    return await this._signer.signTypedData(await this._getSafeMessageTypedData(hashMessage(message)))
   }
 
   /**
-   * Signs typed data according to EIP-712.
+   * Signs typed data according to EIP-712 as the safe (ERC-1271 / SafeMessage), so the safe's `isValidSignature` accepts it.
    *
    * @param {TypedData} typedData - The typed data to sign.
    * @returns {Promise<string>} The typed data signature.
@@ -264,7 +264,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   async signTypedData ({ domain, types, message }) {
     this._guardDisposed()
 
-    return await this._signer.signTypedData({ domain, types, message })
+    return await this._signer.signTypedData(await this._getSafeMessageTypedData(TypedDataEncoder.hash(domain, types, message)))
   }
 
   /**

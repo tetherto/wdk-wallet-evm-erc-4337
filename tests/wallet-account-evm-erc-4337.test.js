@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals'
 import * as bip39 from 'bip39'
-import { Contract, keccak256, toUtf8Bytes } from 'ethers'
+import { Contract, TypedDataEncoder, hashMessage, keccak256, toUtf8Bytes } from 'ethers'
 import { DisposalError, InvalidSignerError, MaximumFeeExceededError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm/signers'
 
@@ -355,7 +355,9 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         expect(ownerSigner.address).toBe(ACCOUNT.address)
         expect(ownerSigner.signHash).toBeUndefined()
-        expect(await ownerSigner.signTypedData(TYPED_DATA)).toBe(await account.signTypedData(TYPED_DATA))
+        const rawSigner = new PrivateKeySignerEvm(ACCOUNT.keyPair.privateKey)
+        expect(await ownerSigner.signTypedData(TYPED_DATA)).toBe(await rawSigner.signTypedData(TYPED_DATA))
+        rawSigner.dispose()
       })
     })
 
@@ -372,12 +374,24 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
     describe('sign', () => {
       const MESSAGE = 'Dummy message to sign.'
-      const EXPECTED_SIGNATURE = '0xd130f94c52bf393206267278ac0b6009e14f11712578e5c1f7afe4a12685c5b96a77a0832692d96fc51f4bd403839572c55042ecbcc92d215879c5c8bb5778c51c'
+      const EXPECTED_SIGNATURE = '0x78d4361db73e2b4168dca0ad5abf3556c8381c3fc684cf2121e98a480d177e224d51cf8ac75f76ae3ac5453fb05ab70ae259885dceab18e7bd6007a72841829a1c'
 
-      test('should return the correct signature', async () => {
+      test('should return the safe message signature', async () => {
         const signature = await account.sign(MESSAGE)
 
         expect(signature).toBe(EXPECTED_SIGNATURE)
+      })
+
+      test('should sign the message wrapped in the safe message typed data', async () => {
+        const signTypedDataSpy = jest.spyOn(account._signer, 'signTypedData')
+
+        await account.sign(MESSAGE)
+
+        expect(signTypedDataSpy).toHaveBeenCalledWith({
+          domain: { chainId: 1, verifyingContract: SAFE_ADDRESS },
+          types: { SafeMessage: [{ type: 'bytes', name: 'message' }] },
+          message: { message: hashMessage(MESSAGE) }
+        })
       })
     })
 
@@ -401,12 +415,24 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         }
       }
 
-      const EXPECTED_TYPED_DATA_SIGNATURE = '0x1b319d2006b194b044eaff941404d39b8532de6c9a689dfa6cb03ca56fade1451ff857ea3c473cc66853e2f287a2c0ed4b7cc26de17e8b9145972c750514ac101c'
+      const EXPECTED_TYPED_DATA_SIGNATURE = '0xe4302799fdbe978090b992d6713cd87098f4e9ac7a4f62a5b648fc49df8321d77dd51eea1071048ffbb1e03e2ae037e104b3fa97a1995bf39c687f33d81116891c'
 
-      test('should return the correct signature', async () => {
+      test('should return the safe message signature', async () => {
         const signature = await account.signTypedData(TYPED_DATA)
 
         expect(signature).toBe(EXPECTED_TYPED_DATA_SIGNATURE)
+      })
+
+      test('should sign the typed data hash wrapped in the safe message typed data', async () => {
+        const signTypedDataSpy = jest.spyOn(account._signer, 'signTypedData')
+
+        await account.signTypedData(TYPED_DATA)
+
+        expect(signTypedDataSpy).toHaveBeenCalledWith({
+          domain: { chainId: 1, verifyingContract: SAFE_ADDRESS },
+          types: { SafeMessage: [{ type: 'bytes', name: 'message' }] },
+          message: { message: TypedDataEncoder.hash(TYPED_DATA.domain, TYPED_DATA.types, TYPED_DATA.message) }
+        })
       })
     })
 

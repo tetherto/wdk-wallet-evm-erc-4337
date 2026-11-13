@@ -14,8 +14,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * Creates a read-only account for a safe whose address is already known.
      *
      * The address is used as the account's own address, so balances, allowances and quotes resolve against that
-     * safe. Its owner is unknown to the account: {@link verify} and {@link verifyTypedData} throw, and the safe must
-     * already be deployed for {@link quoteSendTransaction} and {@link quoteTransfer}.
+     * safe. Its owner is unknown to the account, so the safe must already be deployed for {@link verify},
+     * {@link verifyTypedData}, {@link quoteSendTransaction} and {@link quoteTransfer}.
      *
      * @param {string} safeAddress - The safe's evm address. Normalized to its checksummed form.
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
@@ -199,20 +199,26 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     getAllowance(token: string, spender: string): Promise<bigint>;
     /**
-     * Verifies a message's signature.
+     * Verifies a message's signature, as produced by the safe (ERC-1271 / SafeMessage).
+     *
+     * If the safe is deployed, the signature is checked on-chain through the safe's `isValidSignature`. Otherwise,
+     * it is checked offline against the safe's owner.
      *
      * @param {string} message - The original message.
      * @param {string} signature - The signature to verify.
-     * @throws {UnsupportedOperationError} If the account was created from a safe address, whose owner is unknown.
+     * @throws {UnsupportedOperationError} If the account was created from a safe address whose safe is not deployed.
      * @returns {Promise<boolean>} True if the signature is valid.
      */
     verify(message: string, signature: string): Promise<boolean>;
     /**
-     * Verifies a typed data signature.
+     * Verifies a typed data signature, as produced by the safe (ERC-1271 / SafeMessage).
+     *
+     * If the safe is deployed, the signature is checked on-chain through the safe's `isValidSignature`. Otherwise,
+     * it is checked offline against the safe's owner.
      *
      * @param {TypedData} typedData - The typed data to verify.
      * @param {string} signature - The signature to verify.
-     * @throws {UnsupportedOperationError} If the account was created from a safe address, whose owner is unknown.
+     * @throws {UnsupportedOperationError} If the account was created from a safe address whose safe is not deployed.
      * @returns {Promise<boolean>} True if the signature is valid.
      */
     verifyTypedData(typedData: TypedData, signature: string): Promise<boolean>;
@@ -234,6 +240,35 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @returns {Promise<SafeAccountV0_3_0>} The safe account instance.
      */
     protected _getSmartAccount(config?: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): Promise<import('abstractionkit').SafeAccountV0_3_0>;
+    /**
+     * Wraps a hash in the safe's SafeMessage EIP-712 typed data, which is what the safe's ERC-1271
+     * `isValidSignature` expects its owners to have signed.
+     *
+     * @protected
+     * @param {string} hash - The hash of the message or typed data (EIP-191 / EIP-712).
+     * @returns {Promise<TypedData>} The SafeMessage typed data.
+     */
+    protected _getSafeMessageTypedData(hash: string): Promise<TypedData>;
+    /**
+     * Verifies a SafeMessage signature over a hash.
+     *
+     * @protected
+     * @param {string} hash - The hash of the message or typed data (EIP-191 / EIP-712).
+     * @param {string} signature - The signature to verify.
+     * @param {string} methodName - The calling method's name, used in the error if verification is unsupported.
+     * @throws {UnsupportedOperationError} If the safe is not deployed and its owner is unknown.
+     * @returns {Promise<boolean>} True if the signature is valid.
+     */
+    protected _verifySafeMessage(hash: string, signature: string, methodName: string): Promise<boolean>;
+    /** @private */
+    private static _isInvalidSignatureError;
+    /**
+     * Returns whether the safe is deployed. A safe cannot be undeployed, so a positive result is cached.
+     *
+     * @protected
+     * @returns {Promise<boolean>} True if the safe is deployed.
+     */
+    protected _isSafeDeployed(): Promise<boolean>;
     /**
      * Returns the safe owner's address.
      *

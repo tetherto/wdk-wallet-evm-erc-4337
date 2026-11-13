@@ -1035,6 +1035,13 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         test('should return false for a malformed signature', async () => {
           expect(await account.verify(MESSAGE, '0xdead')).toBe(false)
         })
+
+        test('should check the deployment of the safe again on the next call, until it is deployed', async () => {
+          await account.verify(MESSAGE, SAFE_MESSAGE_SIGNATURE)
+          await account.verify(MESSAGE, SAFE_MESSAGE_SIGNATURE)
+
+          expect(isDeployedMock).toHaveBeenCalledTimes(2)
+        })
       })
     })
 

@@ -260,8 +260,15 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @returns {Promise<boolean>} True if the signature is valid.
      */
     protected _verifySafeMessage(hash: string, signature: string, methodName: string): Promise<boolean>;
-    /** @private */
-    private static _isInvalidSignatureError;
+    /**
+     * Returns whether an `isValidSignature` error means the signature is invalid (revert, bad input or output),
+     * rather than a failed check (e.g. a network error). ethers reports any EIP-1193 `eth_call` error as a CALL_EXCEPTION.
+     *
+     * @protected
+     * @param {unknown} error - The error.
+     * @returns {boolean} True if the error means that the signature is invalid.
+     */
+    protected static _isInvalidSignatureError(error: unknown): boolean;
     /**
      * Returns whether the safe is deployed. A safe cannot be undeployed, so a positive result is cached.
      *

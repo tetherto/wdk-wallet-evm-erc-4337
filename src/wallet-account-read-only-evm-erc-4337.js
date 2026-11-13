@@ -706,8 +706,12 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       const signer = verifyTypedData(domain, types, message, signature)
 
       return signer.toLowerCase() === ownerAddress.toLowerCase()
-    } catch {
-      return false
+    } catch (error) {
+      if (isError(error, 'INVALID_ARGUMENT')) {
+        return false
+      }
+
+      throw error
     }
   }
 
@@ -715,7 +719,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * Returns whether an `isValidSignature` error means the signature is invalid (revert, bad input or output),
    * rather than a failed check (e.g. a network error). ethers reports any EIP-1193 `eth_call` error as a CALL_EXCEPTION.
    *
-   * @private
+   * @protected
    * @param {unknown} error - The error.
    * @returns {boolean} True if the error means that the signature is invalid.
    */

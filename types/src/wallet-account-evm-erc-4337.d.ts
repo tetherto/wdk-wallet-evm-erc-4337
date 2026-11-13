@@ -108,7 +108,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      */
     getAddress(): Promise<string>;
     /**
-     * Signs a message.
+     * Signs a message as the safe (ERC-1271 / SafeMessage), so the safe's `isValidSignature` accepts it.
      *
      * @param {string} message - The message to sign.
      * @returns {Promise<string>} The message's signature.
@@ -116,7 +116,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      */
     sign(message: string): Promise<string>;
     /**
-     * Signs typed data according to EIP-712.
+     * Signs typed data according to EIP-712 as the safe (ERC-1271 / SafeMessage), so the safe's `isValidSignature` accepts it.
      *
      * @param {TypedData} typedData - The typed data to sign.
      * @returns {Promise<string>} The typed data signature.

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals'
-import { Contract } from 'ethers'
+import { Contract, Interface, TypedDataEncoder, hashMessage } from 'ethers'
 import { NoSuchElementError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError, WdkError } from '@tetherto/wdk-wallet'
 
 const actualWalletEvm = await import('@tetherto/wdk-wallet-evm')
@@ -11,8 +11,6 @@ const getTokenBalancesMock = jest.fn()
 const getAllowanceMock = jest.fn()
 const evmGetTransactionReceiptMock = jest.fn()
 const evmGetTransactionMock = jest.fn()
-const verifyMock = jest.fn()
-const verifyTypedDataMock = jest.fn()
 
 const WalletAccountReadOnlyEvmMock = jest.fn().mockImplementation(() => ({
   getBalance: getBalanceMock,
@@ -20,9 +18,7 @@ const WalletAccountReadOnlyEvmMock = jest.fn().mockImplementation(() => ({
   getTokenBalances: getTokenBalancesMock,
   getAllowance: getAllowanceMock,
   getTransactionReceipt: evmGetTransactionReceiptMock,
-  getTransaction: evmGetTransactionMock,
-  verify: verifyMock,
-  verifyTypedData: verifyTypedDataMock
+  getTransaction: evmGetTransactionMock
 }))
 
 Object.defineProperties(WalletAccountReadOnlyEvmMock, Object.getOwnPropertyDescriptors(actualWalletEvm.WalletAccountReadOnlyEvm))
@@ -134,6 +130,21 @@ const EIP1193_PROVIDER = {
     if (method === 'eth_chainId') return '0x1'
     return null
   })
+}
+
+const ERC1271_INTERFACE = new Interface(['function isValidSignature(bytes32 _dataHash, bytes _signature) view returns (bytes4)'])
+const ERC1271_MAGIC_VALUE_RESULT = '0x1626ba7e' + '00'.repeat(28)
+
+function createErc1271Provider () {
+  const ethCallMock = jest.fn()
+  const provider = {
+    request: jest.fn(async ({ method, params }) => {
+      if (method === 'eth_chainId') return '0x1'
+      if (method === 'eth_call') return await ethCallMock(params[0])
+      return null
+    })
+  }
+  return { provider, ethCallMock }
 }
 
 const SPONSORED_CONFIG = {
@@ -347,24 +358,26 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           .toThrow("The 'provider' option cannot be set to an empty list.")
       })
 
-      test('should throw when verifying a message because the safe owner is unknown', async () => {
+      test('should throw when verifying a message for a safe that is not deployed, because the safe owner is unknown', async () => {
+        isDeployedMock.mockResolvedValue(false)
+
         const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
 
         await expect(safeAccount.verify('Dummy message to sign.', '0xdead'))
           .rejects.toThrow(expect.objectContaining({ name: 'UnsupportedOperationError' }))
         await expect(safeAccount.verify('Dummy message to sign.', '0xdead'))
           .rejects.toThrow(new UnsupportedOperationError('verify(message, signature)'))
-        expect(verifyMock).not.toHaveBeenCalled()
       })
 
-      test('should throw when verifying typed data because the safe owner is unknown', async () => {
+      test('should throw when verifying typed data for a safe that is not deployed, because the safe owner is unknown', async () => {
+        isDeployedMock.mockResolvedValue(false)
+
         const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(EXISTING_SAFE_ADDRESS, SPONSORED_CONFIG)
 
-        await expect(safeAccount.verifyTypedData({ domain: {}, types: {}, message: {} }, '0xdead'))
+        await expect(safeAccount.verifyTypedData({ domain: { chainId: 1 }, types: { Mail: [{ name: 'contents', type: 'string' }] }, message: { contents: 'hi' } }, '0xdead'))
           .rejects.toThrow(expect.objectContaining({ name: 'UnsupportedOperationError' }))
-        await expect(safeAccount.verifyTypedData({ domain: {}, types: {}, message: {} }, '0xdead'))
+        await expect(safeAccount.verifyTypedData({ domain: { chainId: 1 }, types: { Mail: [{ name: 'contents', type: 'string' }] }, message: { contents: 'hi' } }, '0xdead'))
           .rejects.toThrow(new UnsupportedOperationError('verifyTypedData(typedData, signature)'))
-        expect(verifyTypedDataMock).not.toHaveBeenCalled()
       })
 
       test('should throw when quoting for a safe that is not deployed', async () => {
@@ -931,25 +944,104 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
     describe('verify', () => {
       const MESSAGE = 'Dummy message to sign.'
-      const SIGNATURE = '0xd130f94c52bf393206267278ac0b6009e14f11712578e5c1f7afe4a12685c5b96a77a0832692d96fc51f4bd403839572c55042ecbcc92d215879c5c8bb5778c51c'
+      const SAFE_MESSAGE_SIGNATURE = '0x78d4361db73e2b4168dca0ad5abf3556c8381c3fc684cf2121e98a480d177e224d51cf8ac75f76ae3ac5453fb05ab70ae259885dceab18e7bd6007a72841829a1c'
+      const RAW_OWNER_SIGNATURE = '0xd130f94c52bf393206267278ac0b6009e14f11712578e5c1f7afe4a12685c5b96a77a0832692d96fc51f4bd403839572c55042ecbcc92d215879c5c8bb5778c51c'
 
-      test('should return true for a valid signature', async () => {
-        verifyMock.mockResolvedValue(true)
+      describe('when the safe is deployed', () => {
+        test('should return true if the safe returns the erc-1271 magic value', async () => {
+          const { provider, ethCallMock } = createErc1271Provider()
+          ethCallMock.mockResolvedValue(ERC1271_MAGIC_VALUE_RESULT)
+          const deployedAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider })
 
-        const result = await account.verify(MESSAGE, SIGNATURE)
+          expect(await deployedAccount.verify(MESSAGE, SAFE_MESSAGE_SIGNATURE)).toBe(true)
+          expect(ethCallMock).toHaveBeenCalledWith({
+            to: SAFE_ADDRESS.toLowerCase(),
+            data: ERC1271_INTERFACE.encodeFunctionData('isValidSignature', [hashMessage(MESSAGE), SAFE_MESSAGE_SIGNATURE])
+          })
+        })
 
-        expect(result).toBe(true)
-        expect(verifyMock).toHaveBeenCalledWith(MESSAGE, SIGNATURE)
-        expect(WalletAccountReadOnlyEvmMock).toHaveBeenCalledWith(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider: account._provider })
+        test('should return false if the safe does not return the erc-1271 magic value', async () => {
+          const { provider, ethCallMock } = createErc1271Provider()
+          ethCallMock.mockResolvedValue('0x' + '00'.repeat(32))
+          const deployedAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider })
+
+          expect(await deployedAccount.verify(MESSAGE, SAFE_MESSAGE_SIGNATURE)).toBe(false)
+        })
+
+        test('should return false if the safe reverts', async () => {
+          const { provider, ethCallMock } = createErc1271Provider()
+          ethCallMock.mockRejectedValue(new Error('execution reverted: GS026'))
+          const deployedAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider })
+
+          expect(await deployedAccount.verify(MESSAGE, RAW_OWNER_SIGNATURE)).toBe(false)
+        })
+
+        test('should propagate errors that are not reverts, such as network failures', async () => {
+          const { provider, ethCallMock } = createErc1271Provider()
+          ethCallMock.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:8545'))
+          const deployedAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider })
+
+          await expect(deployedAccount.verify(MESSAGE, SAFE_MESSAGE_SIGNATURE)).rejects.toMatchObject({
+            info: { error: { message: 'connect ECONNREFUSED 127.0.0.1:8545' } }
+          })
+        })
+
+        test('should return false for a malformed signature', async () => {
+          const { provider, ethCallMock } = createErc1271Provider()
+          const deployedAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider })
+
+          expect(await deployedAccount.verify(MESSAGE, 'not-a-signature')).toBe(false)
+          expect(ethCallMock).not.toHaveBeenCalled()
+        })
+
+        test('should check the deployment of the safe only once', async () => {
+          const { provider, ethCallMock } = createErc1271Provider()
+          ethCallMock.mockResolvedValue(ERC1271_MAGIC_VALUE_RESULT)
+          const deployedAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider })
+
+          await deployedAccount.verify(MESSAGE, SAFE_MESSAGE_SIGNATURE)
+          await deployedAccount.verify(MESSAGE, SAFE_MESSAGE_SIGNATURE)
+
+          expect(isDeployedMock).toHaveBeenCalledTimes(1)
+          expect(ethCallMock).toHaveBeenCalledTimes(2)
+        })
+
+        test('should verify through the safe for an account created from a safe address', async () => {
+          const { provider, ethCallMock } = createErc1271Provider()
+          ethCallMock.mockResolvedValue(ERC1271_MAGIC_VALUE_RESULT)
+          const safeAccount = WalletAccountReadOnlyEvmErc4337.fromSafeAddress(SAFE_ADDRESS, { ...SPONSORED_CONFIG, provider })
+
+          expect(await safeAccount.verify(MESSAGE, SAFE_MESSAGE_SIGNATURE)).toBe(true)
+        })
       })
 
-      test('should return false for an invalid signature', async () => {
-        verifyMock.mockResolvedValue(false)
+      describe('when the safe is not deployed', () => {
+        beforeEach(() => {
+          isDeployedMock.mockResolvedValue(false)
+        })
 
-        const result = await account.verify('wrong message', SIGNATURE)
+        test('should return true for a safe message signature by the owner', async () => {
+          expect(await account.verify(MESSAGE, SAFE_MESSAGE_SIGNATURE)).toBe(true)
+        })
 
-        expect(result).toBe(false)
-        expect(verifyMock).toHaveBeenCalledWith('wrong message', SIGNATURE)
+        test('should return false for the raw owner signature', async () => {
+          expect(await account.verify(MESSAGE, RAW_OWNER_SIGNATURE)).toBe(false)
+        })
+
+        test('should return false for a different message', async () => {
+          expect(await account.verify('wrong message', SAFE_MESSAGE_SIGNATURE)).toBe(false)
+        })
+
+        test('should return false for a malformed signature', async () => {
+          expect(await account.verify(MESSAGE, '0xdead')).toBe(false)
+        })
+
+        test('should check the deployment of the safe again on the next call, until it is deployed', async () => {
+          await account.verify(MESSAGE, SAFE_MESSAGE_SIGNATURE)
+          await account.verify(MESSAGE, SAFE_MESSAGE_SIGNATURE)
+
+          expect(isDeployedMock).toHaveBeenCalledTimes(2)
+        })
       })
     })
 
@@ -973,24 +1065,46 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         }
       }
 
-      const TYPED_DATA_SIGNATURE = '0x1b319d2006b194b044eaff941404d39b8532de6c9a689dfa6cb03ca56fade1451ff857ea3c473cc66853e2f287a2c0ed4b7cc26de17e8b9145972c750514ac101c'
+      const SAFE_MESSAGE_SIGNATURE = '0xe4302799fdbe978090b992d6713cd87098f4e9ac7a4f62a5b648fc49df8321d77dd51eea1071048ffbb1e03e2ae037e104b3fa97a1995bf39c687f33d81116891c'
+      const RAW_OWNER_SIGNATURE = '0x1b319d2006b194b044eaff941404d39b8532de6c9a689dfa6cb03ca56fade1451ff857ea3c473cc66853e2f287a2c0ed4b7cc26de17e8b9145972c750514ac101c'
 
-      test('should return true for a valid typed data signature', async () => {
-        verifyTypedDataMock.mockResolvedValue(true)
+      describe('when the safe is deployed', () => {
+        test('should check the typed data hash through the safe', async () => {
+          const { provider, ethCallMock } = createErc1271Provider()
+          ethCallMock.mockResolvedValue(ERC1271_MAGIC_VALUE_RESULT)
+          const deployedAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider })
 
-        const result = await account.verifyTypedData(TYPED_DATA, TYPED_DATA_SIGNATURE)
+          expect(await deployedAccount.verifyTypedData(TYPED_DATA, SAFE_MESSAGE_SIGNATURE)).toBe(true)
+          expect(ethCallMock).toHaveBeenCalledWith({
+            to: SAFE_ADDRESS.toLowerCase(),
+            data: ERC1271_INTERFACE.encodeFunctionData('isValidSignature', [
+              TypedDataEncoder.hash(TYPED_DATA.domain, TYPED_DATA.types, TYPED_DATA.message),
+              SAFE_MESSAGE_SIGNATURE
+            ])
+          })
+        })
 
-        expect(result).toBe(true)
-        expect(verifyTypedDataMock).toHaveBeenCalledWith(TYPED_DATA, TYPED_DATA_SIGNATURE)
+        test('should return false if the safe reverts', async () => {
+          const { provider, ethCallMock } = createErc1271Provider()
+          ethCallMock.mockRejectedValue(new Error('execution reverted: GS026'))
+          const deployedAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider })
+
+          expect(await deployedAccount.verifyTypedData(TYPED_DATA, RAW_OWNER_SIGNATURE)).toBe(false)
+        })
       })
 
-      test('should return false for an invalid typed data signature', async () => {
-        verifyTypedDataMock.mockResolvedValue(false)
+      describe('when the safe is not deployed', () => {
+        beforeEach(() => {
+          isDeployedMock.mockResolvedValue(false)
+        })
 
-        const result = await account.verifyTypedData(TYPED_DATA, TYPED_DATA_SIGNATURE)
+        test('should return true for a safe message signature by the owner', async () => {
+          expect(await account.verifyTypedData(TYPED_DATA, SAFE_MESSAGE_SIGNATURE)).toBe(true)
+        })
 
-        expect(result).toBe(false)
-        expect(verifyTypedDataMock).toHaveBeenCalledWith(TYPED_DATA, TYPED_DATA_SIGNATURE)
+        test('should return false for the raw owner signature', async () => {
+          expect(await account.verifyTypedData(TYPED_DATA, RAW_OWNER_SIGNATURE)).toBe(false)
+        })
       })
     })
   })

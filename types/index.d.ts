@@ -16,6 +16,7 @@ export type EvmErc4337Transaction = import("./src/wallet-account-read-only-evm-e
 export type EvmErc4337GasOverrides = import("./src/wallet-account-read-only-evm-erc-4337.js").EvmErc4337GasOverrides;
 export type EvmErc4337TransferOptions = import("./src/wallet-account-read-only-evm-erc-4337.js").EvmErc4337TransferOptions;
 export type EvmErc4337ApproveOptions = import("./src/wallet-account-evm-erc-4337.js").EvmErc4337ApproveOptions;
+export type EvmErc4337SafeOptions = import("./src/wallet-account-evm-erc-4337.js").EvmErc4337SafeOptions;
 export type Nonce = import("./src/wallet-account-read-only-evm-erc-4337.js").Nonce;
 export type TransactionResult = import("@tetherto/wdk-wallet-evm").TransactionResult;
 export type TransferOptions = import("@tetherto/wdk-wallet-evm").TransferOptions;

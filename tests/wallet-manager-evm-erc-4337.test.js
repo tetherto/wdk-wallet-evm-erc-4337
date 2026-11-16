@@ -81,6 +81,16 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(account.path).toBe("m/44'/60'/0'/0/3")
       })
 
+      test('should not apply a safeAddress option to its accounts', async () => {
+        const pinnedWallet = new WalletManagerEvmErc4337(SEED_PHRASE, { ...SPONSORED_CONFIG, safeAddress: '0xFE0847a52f1C75A01B06cFC636c87683E72a6029' })
+        const unpinned = await wallet.getAccount(1)
+        const account = await pinnedWallet.getAccount(1)
+
+        expect(await account.getAddress()).toBe(await unpinned.getAddress())
+
+        pinnedWallet.dispose()
+      })
+
       test('should cache and return the same account for the same index', async () => {
         const account1 = await wallet.getAccount(0)
         const account2 = await wallet.getAccount(0)

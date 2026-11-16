@@ -83,7 +83,8 @@ export default class WalletManagerEvmErc4337 extends WalletManager<ISignerEvm> {
     }): Promise<WalletAccountEvmErc4337>;
     /**
      * Builds the account config, injecting the manager's shared provider so accounts reuse the
-     * single ethers provider instance instead of opening their own.
+     * single ethers provider instance instead of opening their own. A `safeAddress` option is
+     * dropped: it binds a single account to a safe, so it must not apply to every account.
      *
      * @private
      * @returns {EvmErc4337WalletConfig} The account configuration.

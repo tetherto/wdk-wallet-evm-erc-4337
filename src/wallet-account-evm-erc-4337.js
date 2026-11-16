@@ -14,7 +14,7 @@
 
 'use strict'
 
-import { Contract, TypedDataEncoder, hashMessage, hexlify, keccak256, randomBytes, toUtf8Bytes } from 'ethers'
+import { Contract, TypedDataEncoder, getAddress, hashMessage, hexlify, isAddress, keccak256, randomBytes, toUtf8Bytes } from 'ethers'
 
 import { DisposalError, MaximumFeeExceededError, ProviderRequiredError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
@@ -23,6 +23,8 @@ import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm/sig
 import { ENTRYPOINT_V7, calculateUserOperationMaxGasCost, fetchAccountNonce } from 'abstractionkit'
 
 import WalletAccountReadOnlyEvmErc4337, { FEE_TOLERANCE_COEFFICIENT } from './wallet-account-read-only-evm-erc-4337.js'
+
+import { ConfigurationError } from './errors.js'
 
 /** @typedef {import('abstractionkit').UserOperationV7} UserOperationV7 */
 /** @typedef {import('abstractionkit').SafeAccountV0_3_0} SafeAccountV0_3_0 */
@@ -62,6 +64,13 @@ import WalletAccountReadOnlyEvmErc4337, { FEE_TOLERANCE_COEFFICIENT } from './wa
  * @typedef {ApproveOptions & EvmErc4337GasOverrides} EvmErc4337ApproveOptions
  */
 
+/**
+ * @typedef {Object} EvmErc4337SafeOptions
+ * @property {string} [safeAddress] - The address of an existing safe to operate, instead of the safe predicted from the signer's address (e.g. after the safe's owner was changed). Unless it is the signer's own predicted safe, it must be a deployed safe that counts the signer among its owners; this is checked on the first operation that signs or builds a user operation.
+ */
+
+const SAFE_ABI = ['function isOwner(address owner) view returns (bool)']
+
 const QUOTE_MAX_AGE_MS = 2 * 60 * 1_000
 
 const NONCE_KEY_SHIFT = 64n
@@ -82,8 +91,9 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @overload
    * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
    * @param {string} path - The BIP-44 derivation path, relative to "m/44'/60'" (e.g. "0'/0/0").
-   * @param {EvmErc4337WalletConfig} config - The configuration object.
+   * @param {EvmErc4337WalletConfig & EvmErc4337SafeOptions} config - The configuration object.
    * @throws {ValueError} If the given seed phrase is invalid.
+   * @throws {ValueError} If `config.safeAddress` is set and is not a well-formed evm address.
    */
 
   /**
@@ -91,19 +101,21 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    *
    * @overload
    * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
-   * @param {EvmErc4337WalletConfig} config - The configuration object.
+   * @param {EvmErc4337WalletConfig & EvmErc4337SafeOptions} config - The configuration object.
    * @throws {ValueError} If the given seed phrase is invalid.
+   * @throws {ValueError} If `config.safeAddress` is set and is not a well-formed evm address.
    */
 
   /**
    * Creates a new evm [erc-4337](https://www.erc4337.io/docs) wallet account using a signer as the safe's owner.
    *
-   * The signer is wiped on {@link dispose} only if `shouldWipeSignerOnDisposal` is set. The safe's address is
-   * predicted from the signer's address on the first call to {@link getAddress}.
+   * The signer is wiped on {@link dispose} only if `shouldWipeSignerOnDisposal` is set. Unless `safeAddress` is set,
+   * the safe's address is predicted from the signer's address on the first call to {@link getAddress}.
    *
    * @overload
    * @param {ISignerEvm} signer - A signer implementing the EVM signer interface.
-   * @param {EvmErc4337WalletConfig & SignerOptions} config - The configuration object.
+   * @param {EvmErc4337WalletConfig & SignerOptions & EvmErc4337SafeOptions} config - The configuration object.
+   * @throws {ValueError} If `config.safeAddress` is set and is not a well-formed evm address.
    */
 
   constructor (seedOrSigner, pathOrConfig, config) {
@@ -116,7 +128,19 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
         ]
       : [seedOrSigner, pathOrConfig]
 
+    let pinnedSafeAddress
+
     try {
+      const safeAddress = configuration?.safeAddress
+
+      if (safeAddress !== undefined && safeAddress !== null) {
+        if (!isAddress(safeAddress)) {
+          throw new ValueError(`Invalid safe address: '${safeAddress}'.`)
+        }
+
+        pinnedSafeAddress = getAddress(safeAddress)
+      }
+
       super(undefined, configuration)
     } catch (error) {
       if (isSeed) signer.dispose()
@@ -143,8 +167,24 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     /** @private */
     this._signer = signer
 
+    /**
+     * The safe address given in the configuration, or `undefined` if the safe is predicted from the signer.
+     *
+     * @private
+     * @type {string | undefined}
+     */
+    this._pinnedSafeAddress = pinnedSafeAddress
+
     /** @private */
-    this._safeAddress = undefined
+    this._safeAddress = pinnedSafeAddress
+
+    /**
+     * True once the pinned safe has been checked against the signer.
+     *
+     * @private
+     * @type {boolean}
+     */
+    this._pinnedSafeChecked = false
 
     /**
      * Cached quotes from fee estimations, keyed by serialized transaction and paymaster configuration.
@@ -191,7 +231,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * The account owns the key and wipes it on {@link dispose}.
    *
    * @param {string | Uint8Array} privateKey - The raw private key (hex string with or without 0x, or 32 bytes).
-   * @param {EvmErc4337WalletConfig} config - The configuration object.
+   * @param {EvmErc4337WalletConfig & EvmErc4337SafeOptions} config - The configuration object.
+   * @throws {ValueError} If `config.safeAddress` is set and is not a well-formed evm address.
    * @returns {WalletAccountEvmErc4337} The wallet account.
    */
   static fromPrivateKey (privateKey, config) {
@@ -230,7 +271,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 
   /**
-   * Returns the account's address, which is the safe's address predicted from the signer's address.
+   * Returns the account's address: the `safeAddress` given in the configuration if set, otherwise the safe's
+   * address predicted from the signer's address.
    *
    * @returns {Promise<string>} The account's address.
    * @throws {ValueError} If the signer's address is not a well-formed evm address.
@@ -246,10 +288,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    *
    * @param {string} message - The message to sign.
    * @returns {Promise<string>} The message's signature.
+   * @throws {ConfigurationError} If `safeAddress` is set and the signer cannot operate that safe.
    * @throws {DisposalError} If the account, or the externally supplied signer it uses, has been disposed.
    */
   async sign (message) {
     this._guardDisposed()
+
+    await this._checkPinnedSafe()
 
     return await this._signer.signTypedData(await this._getSafeMessageTypedData(hashMessage(message)))
   }
@@ -259,10 +304,13 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    *
    * @param {TypedData} typedData - The typed data to sign.
    * @returns {Promise<string>} The typed data signature.
+   * @throws {ConfigurationError} If `safeAddress` is set and the signer cannot operate that safe.
    * @throws {DisposalError} If the account, or the externally supplied signer it uses, has been disposed.
    */
   async signTypedData ({ domain, types, message }) {
     this._guardDisposed()
+
+    await this._checkPinnedSafe()
 
     return await this._signer.signTypedData(await this._getSafeMessageTypedData(TypedDataEncoder.hash(domain, types, message)))
   }
@@ -276,6 +324,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<UserOperationV7>} The signed user operation.
    * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
+   * @throws {ConfigurationError} If `safeAddress` is set and the signer cannot operate that safe.
    * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
    * @throws {MaximumFeeExceededError} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
    * @throws {TransactionError} If the paymaster reports AA50 (the account cannot repay the paymaster).
@@ -368,6 +417,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
    * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
+   * @throws {ConfigurationError} If `safeAddress` is set and the signer cannot operate that safe.
    * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
    * @throws {TransactionError} If the paymaster reports AA50 (the account cannot repay the paymaster).
    */
@@ -420,6 +470,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<TransactionResult>} The transaction's result.
    * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
+   * @throws {ConfigurationError} If `safeAddress` is set and the signer cannot operate that safe.
    * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
    * @throws {MaximumFeeExceededError} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
    * @throws {ValueError} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
@@ -464,6 +515,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<TransferResult>} The transfer's result.
    * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
+   * @throws {ConfigurationError} If `safeAddress` is set and the signer cannot operate that safe.
    * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
    * @throws {MaximumFeeExceededError} If the transaction is not sponsored, and the transfer's cost surpasses the transfer max. fee option.
    * @throws {ValueError} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
@@ -500,11 +552,15 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @returns {Promise<WalletAccountReadOnlyEvmErc4337>} The read-only account.
    */
   async toReadOnlyAccount () {
-    const address = await this._getOwnerAddress()
+    const { safeAddress, ...config } = this._config
+    const ownerAddress = await this._getOwnerAddress()
 
-    const readOnlyAccount = new WalletAccountReadOnlyEvmErc4337(address, this._config)
+    if (this._pinnedSafeAddress !== undefined &&
+      this._pinnedSafeAddress !== WalletAccountReadOnlyEvmErc4337.predictSafeAddress(ownerAddress, config)) {
+      return WalletAccountReadOnlyEvmErc4337.fromSafeAddress(this._pinnedSafeAddress, config)
+    }
 
-    return readOnlyAccount
+    return new WalletAccountReadOnlyEvmErc4337(ownerAddress, config)
   }
 
   /**
@@ -515,6 +571,53 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    */
   async _getOwnerAddress () {
     return await this._signer.getAddress()
+  }
+
+  /**
+   * Builds a safe account instance, after checking that the signer can operate the pinned safe (if any).
+   *
+   * @protected
+   * @param {EvmErc4337WalletConfig} [config] - The wallet configuration. Defaults to the instance configuration.
+   * @throws {ConfigurationError} If `safeAddress` is set and the signer cannot operate that safe.
+   * @returns {Promise<SafeAccountV0_3_0>} The safe account instance.
+   */
+  async _getSmartAccount (config = this._config) {
+    await this._checkPinnedSafe()
+
+    return await super._getSmartAccount(config)
+  }
+
+  /**
+   * Checks that the signer can operate the safe pinned through `safeAddress`. Nothing to check if no safe is pinned or
+   * if it is the signer's own predicted safe; otherwise, it must be a deployed safe that counts the signer among its
+   * owners. A successful check is cached.
+   *
+   * @private
+   * @throws {ConfigurationError} If the signer cannot operate the pinned safe.
+   * @returns {Promise<void>}
+   */
+  async _checkPinnedSafe () {
+    if (this._pinnedSafeAddress === undefined || this._pinnedSafeChecked) return
+
+    const safeAddress = this._pinnedSafeAddress
+    const ownerAddress = await this._getOwnerAddress()
+
+    if (safeAddress !== WalletAccountReadOnlyEvmErc4337.predictSafeAddress(ownerAddress, this._config)) {
+      const safe = new Contract(safeAddress, SAFE_ABI, this._provider)
+
+      // No code at the address (undeployed safe, eoa) returns no data; a non-safe contract reverts.
+      const isOwner = await safe.isOwner(ownerAddress).catch((error) => {
+        if (WalletAccountReadOnlyEvmErc4337._isInvalidSignatureError(error)) return false
+
+        throw error
+      })
+
+      if (!isOwner) {
+        throw new ConfigurationError(`The signer '${ownerAddress}' is not an owner of a safe deployed at '${safeAddress}'.`)
+      }
+    }
+
+    this._pinnedSafeChecked = true
   }
 
   /**

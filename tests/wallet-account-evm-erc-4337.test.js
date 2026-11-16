@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals'
 import * as bip39 from 'bip39'
-import { Contract, TypedDataEncoder, hashMessage, keccak256, toUtf8Bytes } from 'ethers'
+import { AbiCoder, Contract, TypedDataEncoder, hashMessage, keccak256, toUtf8Bytes } from 'ethers'
 import { DisposalError, InvalidSignerError, MaximumFeeExceededError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm/signers'
 
@@ -369,6 +369,156 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           .toThrow(expect.objectContaining({ name: 'UnsupportedOperationError' }))
         expect(() => WalletAccountEvmErc4337.fromSafeAddress(SAFE_ADDRESS, SPONSORED_CONFIG))
           .toThrow(new UnsupportedOperationError('fromSafeAddress(safeAddress, config)'))
+      })
+    })
+
+    describe('safeAddress option', () => {
+      const PINNED_SAFE_ADDRESS = '0xFE0847a52f1C75A01B06cFC636c87683E72a6029'
+      const TRANSACTION = { to: ACCOUNT.address, value: 1, data: '0x' }
+
+      const coder = AbiCoder.defaultAbiCoder()
+
+      const NOT_OWNER_ERROR = new ConfigurationError(`The signer '${ACCOUNT.address}' is not an owner of a safe deployed at '${PINNED_SAFE_ADDRESS}'.`)
+
+      // Answers `isOwner(address)` like a safe owned by `owner`; `call` overrides the eth_call behavior.
+      const safeProvider = ({ owner = ACCOUNT.address, call } = {}) => ({
+        request: jest.fn(async ({ method, params }) => {
+          if (method === 'eth_chainId') return '0x1'
+          if (method !== 'eth_call') return null
+          if (call) return call()
+
+          const [queried] = coder.decode(['address'], '0x' + params[0].data.slice(10))
+          return coder.encode(['bool'], [queried.toLowerCase() === owner.toLowerCase()])
+        })
+      })
+
+      const ethCalls = (provider) => provider.request.mock.calls.filter(([{ method }]) => method === 'eth_call')
+
+      const pinned = (provider, safeAddress = PINNED_SAFE_ADDRESS) =>
+        new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", { ...SPONSORED_CONFIG, provider, safeAddress })
+
+      let acc
+
+      afterEach(() => {
+        acc?.dispose()
+        acc = undefined
+      })
+
+      test('should use the given safe address, checksummed, as the account address', async () => {
+        acc = pinned(safeProvider(), PINNED_SAFE_ADDRESS.toLowerCase())
+
+        expect(await acc.getAddress()).toBe(PINNED_SAFE_ADDRESS)
+      })
+
+      test('should not ask the signer for its address to resolve the account address', async () => {
+        const getAddress = jest.fn().mockResolvedValue(ACCOUNT.address)
+        const lazySigner = { isDerivable: false, path: null, keyPair: null, getAddress, signTypedData: jest.fn(), dispose: () => {} }
+
+        acc = new WalletAccountEvmErc4337(lazySigner, { ...SPONSORED_CONFIG, safeAddress: PINNED_SAFE_ADDRESS })
+
+        expect(await acc.getAddress()).toBe(PINNED_SAFE_ADDRESS)
+        expect(getAddress).not.toHaveBeenCalled()
+      })
+
+      test('should treat a null safe address as not set', async () => {
+        acc = pinned(safeProvider(), null)
+
+        expect(await acc.getAddress()).toBe(SAFE_ADDRESS)
+      })
+
+      test('should throw and wipe the seed signer if the safe address is not well-formed', () => {
+        const disposeSpy = jest.spyOn(SeedSignerEvm.prototype, 'dispose')
+
+        expect(() => pinned(safeProvider(), '0x123'))
+          .toThrow(new ValueError("Invalid safe address: '0x123'."))
+        expect(disposeSpy).toHaveBeenCalledTimes(1)
+
+        disposeSpy.mockRestore()
+      })
+
+      test('should send user operations from the given safe if the signer is an owner', async () => {
+        sendUserOperationMock.mockResolvedValue(DUMMY_USER_OP_HASH)
+        acc = pinned(safeProvider())
+
+        const { hash } = await acc.sendTransaction(TRANSACTION)
+
+        expect(hash).toBe(DUMMY_USER_OP_HASH)
+        expect(SafeAccountMock).toHaveBeenCalledWith(PINNED_SAFE_ADDRESS, INIT_CODE_OVERRIDES)
+      })
+
+      test('should sign messages for the given safe if the signer is an owner', async () => {
+        acc = pinned(safeProvider())
+        const signTypedDataSpy = jest.spyOn(acc._signer, 'signTypedData')
+
+        await acc.sign('Dummy message to sign.')
+
+        expect(signTypedDataSpy).toHaveBeenCalledWith(expect.objectContaining({
+          domain: { chainId: 1, verifyingContract: PINNED_SAFE_ADDRESS }
+        }))
+      })
+
+      test('should check the safe only once', async () => {
+        const provider = safeProvider()
+        acc = pinned(provider)
+
+        await acc.sign('a')
+        await acc.sign('b')
+
+        expect(ethCalls(provider)).toHaveLength(1)
+      })
+
+      test('should not check the safe if it is the signer\'s own predicted safe', async () => {
+        const provider = safeProvider()
+        acc = pinned(provider, SAFE_ADDRESS)
+
+        expect(await acc.sign('Dummy message to sign.')).toBe(await account.sign('Dummy message to sign.'))
+        expect(ethCalls(provider)).toHaveLength(0)
+      })
+
+      test('should throw if the signer is not an owner of the safe', async () => {
+        acc = pinned(safeProvider({ owner: '0x1111111111111111111111111111111111111111' }))
+
+        await expect(acc.sendTransaction(TRANSACTION)).rejects.toThrow(NOT_OWNER_ERROR)
+        await expect(acc.sign('Dummy message to sign.')).rejects.toThrow(NOT_OWNER_ERROR)
+        expect(sendUserOperationMock).not.toHaveBeenCalled()
+      })
+
+      test('should throw if there is no contract at the safe address', async () => {
+        acc = pinned(safeProvider({ call: () => '0x' }))
+
+        await expect(acc.sendTransaction(TRANSACTION)).rejects.toThrow(NOT_OWNER_ERROR)
+      })
+
+      test('should throw if the contract at the safe address is not a safe', async () => {
+        acc = pinned(safeProvider({ call: () => { throw new Error('execution reverted') } }))
+
+        await expect(acc.signTransaction(TRANSACTION)).rejects.toThrow(NOT_OWNER_ERROR)
+      })
+
+      test('should propagate rpc failures without caching the check', async () => {
+        let fail = true
+        const provider = safeProvider({
+          call: () => {
+            if (fail) throw new Error('network down')
+            return coder.encode(['bool'], [true])
+          }
+        })
+        acc = pinned(provider)
+
+        await expect(acc.sign('a')).rejects.not.toThrow(ConfigurationError)
+
+        fail = false
+
+        await expect(acc.sign('a')).resolves.toBeDefined()
+      })
+
+      test('should return a read-only account bound to the given safe', async () => {
+        acc = pinned(safeProvider())
+
+        const readOnlyAccount = await acc.toReadOnlyAccount()
+
+        expect(await readOnlyAccount.getAddress()).toBe(PINNED_SAFE_ADDRESS)
+        expect(await readOnlyAccount._getOwnerAddress()).toBeUndefined()
       })
     })
 

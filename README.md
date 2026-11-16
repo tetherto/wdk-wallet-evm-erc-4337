@@ -103,6 +103,25 @@ const account = WalletAccountEvmErc4337.fromPrivateKey(privateKey, config)
 - The safe's address is predicted from the signer's `getAddress()` on first use, so signers that only provide their address asynchronously (e.g. hardware signers) are supported.
 - `account.path` and `account.keyPair` are `null` for signers without a derivation path or key material.
 
+## Binding to an Existing Safe
+
+A safe's address is derived from its owners, so after an owner change (key rotation, a recovery module) the new owner's key predicts a different, undeployed safe. Bind the account to the existing safe instead:
+
+```javascript
+// Through the wallet manager (and WDK's registerWallet): key by the account's full path (account.path)
+const wallet = new WalletManagerEvmErc4337(newSeedPhrase, {
+  ...config,
+  safeAddresses: { "m/44'/60'/0'/0/0": '0xYourSafe...' }
+})
+
+// Or on a single account
+const account = new WalletAccountEvmErc4337(signer, { ...config, safeAddress: '0xYourSafe...' })
+```
+
+**Notes:**
+- `safeAddresses` keys must be the full derivation path (`"m/44'/60'/0'/0/0"`), not the `getAccountByPath` suffix; anything else throws. It applies to accounts of the default signer only.
+- Unless the address is the signer's own predicted safe, the first sign, quote or send checks that a safe is deployed there and counts the signer among its owners, and throws a `ConfigurationError` otherwise.
+
 ## Concurrent / Parallel Sends (nonce lanes)
 
 By default every send uses the account's key-0 nonce, so it is sequential — a second send fired before the first is mined would collide on the nonce. To send independent operations concurrently, put each in its own **nonce lane** (an ERC-4337 two-dimensional nonce: a 192-bit `key` with its own sequence). Ops in different keys have no ordering constraint and validate independently, so they can be submitted at the same time.

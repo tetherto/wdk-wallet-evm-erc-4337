@@ -91,6 +91,55 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         pinnedWallet.dispose()
       })
 
+      describe('safeAddresses option', () => {
+        const PINNED_SAFE_ADDRESS = '0xFE0847a52f1C75A01B06cFC636c87683E72a6029'
+
+        let pinnedWallet
+
+        beforeEach(() => {
+          pinnedWallet = new WalletManagerEvmErc4337(SEED_PHRASE, {
+            ...SPONSORED_CONFIG,
+            safeAddresses: { "m/44'/60'/0'/0/0": PINNED_SAFE_ADDRESS }
+          })
+        })
+
+        afterEach(() => {
+          pinnedWallet.dispose()
+        })
+
+        test('should bind the account at the given full path to its safe', async () => {
+          expect(await (await pinnedWallet.getAccount(0)).getAddress()).toBe(PINNED_SAFE_ADDRESS)
+          expect(await (await pinnedWallet.getAccountByPath("0'/0/0")).getAddress()).toBe(PINNED_SAFE_ADDRESS)
+        })
+
+        test('should leave the other accounts unbound', async () => {
+          const account = await pinnedWallet.getAccount(1)
+
+          expect(await account.getAddress()).toBe(await (await wallet.getAccount(1)).getAddress())
+        })
+
+        test('should not bind the accounts of named signers', async () => {
+          const namedSigner = new SeedSignerEvm(SEED_PHRASE, "m/44'/60'")
+          pinnedWallet.addSigner('other', namedSigner)
+
+          const account = await pinnedWallet.getAccount(0, { signerName: 'other' })
+
+          expect(await account.getAddress()).toBe(await (await wallet.getAccount(0)).getAddress())
+
+          namedSigner.dispose()
+        })
+
+        test('should throw if a key is not a full derivation path', () => {
+          expect(() => new WalletManagerEvmErc4337(SEED_PHRASE, { ...SPONSORED_CONFIG, safeAddresses: { "0'/0/0": PINNED_SAFE_ADDRESS } }))
+            .toThrow(new ConfigurationError("The 'safeAddresses' keys must be full derivation paths (e.g. \"m/44'/60'/0'/0/0\"), got '0'/0/0'."))
+        })
+
+        test('should throw if a safe address is not well-formed', () => {
+          expect(() => new WalletManagerEvmErc4337(SEED_PHRASE, { ...SPONSORED_CONFIG, safeAddresses: { "m/44'/60'/0'/0/0": '0x123' } }))
+            .toThrow(new ValueError("Invalid safe address: '0x123'."))
+        })
+      })
+
       test('should cache and return the same account for the same index', async () => {
         const account1 = await wallet.getAccount(0)
         const account2 = await wallet.getAccount(0)

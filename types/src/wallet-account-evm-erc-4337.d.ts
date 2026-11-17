@@ -110,6 +110,10 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     /**
      * Signs a message as the safe (ERC-1271 / SafeMessage), so the safe's `isValidSignature` accepts it.
      *
+     * While the safe is not deployed, the signature is wrapped in an [ERC-6492](https://eips.ethereum.org/EIPS/eip-6492)
+     * signature, so that verifiers can simulate the safe's deployment to check it. Use
+     * {@link WalletAccountReadOnlyEvmErc4337.unwrapErc6492Signature} to get the ERC-1271 signature it wraps.
+     *
      * @param {string} message - The message to sign.
      * @returns {Promise<string>} The message's signature.
      * @throws {DisposalError} If the account, or the externally supplied signer it uses, has been disposed.
@@ -117,6 +121,10 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     sign(message: string): Promise<string>;
     /**
      * Signs typed data according to EIP-712 as the safe (ERC-1271 / SafeMessage), so the safe's `isValidSignature` accepts it.
+     *
+     * While the safe is not deployed, the signature is wrapped in an [ERC-6492](https://eips.ethereum.org/EIPS/eip-6492)
+     * signature, so that verifiers can simulate the safe's deployment to check it. Use
+     * {@link WalletAccountReadOnlyEvmErc4337.unwrapErc6492Signature} to get the ERC-1271 signature it wraps.
      *
      * @param {TypedData} typedData - The typed data to sign.
      * @returns {Promise<string>} The typed data signature.
@@ -208,6 +216,15 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @returns {Promise<WalletAccountReadOnlyEvmErc4337>} The read-only account.
      */
     toReadOnlyAccount(): Promise<WalletAccountReadOnlyEvmErc4337>;
+    /**
+     * Signs a hash as the safe (ERC-1271 / SafeMessage). While the safe is not deployed, wraps the signature in an
+     * ERC-6492 signature that deploys the safe predicted from the signer's address.
+     *
+     * @private
+     * @param {string} hash - The hash of the message or typed data (EIP-191 / EIP-712).
+     * @returns {Promise<string>} The signature.
+     */
+    private _signSafeMessage;
     /**
      * Returns the safe owner's address, as given by the signer.
      *

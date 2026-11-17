@@ -483,6 +483,21 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(sendUserOperationMock).not.toHaveBeenCalled()
       })
 
+      test('should quote transactions without checking the safe', async () => {
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_USER_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+        const provider = safeProvider({ owner: '0x1111111111111111111111111111111111111111' })
+        acc = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", { ...PAYMASTER_TOKEN_CONFIG, provider, safeAddress: PINNED_SAFE_ADDRESS })
+
+        const { fee } = await acc.quoteSendTransaction(TRANSACTION)
+
+        expect(fee).toBe(600_000n)
+        expect(SafeAccountMock).toHaveBeenCalledWith(PINNED_SAFE_ADDRESS, INIT_CODE_OVERRIDES)
+        expect(ethCalls(provider)).toHaveLength(0)
+      })
+
       test('should throw if there is no contract at the safe address', async () => {
         acc = pinned(safeProvider({ call: () => '0x' }))
 

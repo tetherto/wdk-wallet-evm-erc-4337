@@ -66,7 +66,7 @@ import { ConfigurationError } from './errors.js'
 
 /**
  * @typedef {Object} EvmErc4337SafeOptions
- * @property {string} [safeAddress] - The address of an existing safe to operate, instead of the safe predicted from the signer's address (e.g. after the safe's owner was changed). Unless it is the signer's own predicted safe, it must be a deployed safe that counts the signer among its owners; this is checked on the first operation that signs or builds a user operation.
+ * @property {string} [safeAddress] - The address of an existing safe to operate, instead of the safe predicted from the signer's address (e.g. after the safe's owner was changed). Unless it is the signer's own predicted safe, it must be a deployed safe that counts the signer among its owners; this is checked on the first operation that signs or sends.
  */
 
 const SAFE_ABI = ['function isOwner(address owner) view returns (bool)']
@@ -417,7 +417,6 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
    * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
-   * @throws {ConfigurationError} If `safeAddress` is set and the signer cannot operate that safe.
    * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
    * @throws {TransactionError} If the paymaster reports AA50 (the account cannot repay the paymaster).
    */
@@ -574,20 +573,6 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 
   /**
-   * Builds a safe account instance, after checking that the signer can operate the pinned safe (if any).
-   *
-   * @protected
-   * @param {EvmErc4337WalletConfig} [config] - The wallet configuration. Defaults to the instance configuration.
-   * @throws {ConfigurationError} If `safeAddress` is set and the signer cannot operate that safe.
-   * @returns {Promise<SafeAccountV0_3_0>} The safe account instance.
-   */
-  async _getSmartAccount (config = this._config) {
-    await this._checkPinnedSafe()
-
-    return await super._getSmartAccount(config)
-  }
-
-  /**
    * Checks that the signer can operate the safe pinned through `safeAddress`. Nothing to check if no safe is pinned or
    * if it is the signer's own predicted safe; otherwise, it must be a deployed safe that counts the signer among its
    * owners. A successful check is cached.
@@ -607,7 +592,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
       // No code at the address (undeployed safe, eoa) returns no data; a non-safe contract reverts.
       const isOwner = await safe.isOwner(ownerAddress).catch((error) => {
-        if (WalletAccountReadOnlyEvmErc4337._isInvalidSignatureError(error)) return false
+        if (WalletAccountReadOnlyEvmErc4337._isRejectedCallError(error)) return false
 
         throw error
       })
@@ -642,6 +627,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
   /** @private */
   async _prepareForSend (tx, txs, config) {
+    await this._checkPinnedSafe()
+
     const nonce = await this._resolveNonce(config)
 
     if (nonce === undefined) {

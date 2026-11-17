@@ -24,8 +24,6 @@ import { SeedSignerEvm } from '@tetherto/wdk-wallet-evm/signers'
 
 import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
 
-import { ConfigurationError } from './errors.js'
-
 /** @typedef {import('ethers').Provider} Provider */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').FeeRates} FeeRates */
@@ -37,10 +35,12 @@ import { ConfigurationError } from './errors.js'
 
 /**
  * @typedef {Object} EvmErc4337WalletManagerSafeOptions
- * @property {Record<string, string>} [safeAddresses] - Binds accounts of the default signer to existing safes, instead of the safes predicted from their owners (e.g. after an owner change). Maps an account's full derivation path, as given by its `path` property (e.g. "m/44'/60'/0'/0/0"), to the safe's address. Each bound account checks its safe as described for the account's `safeAddress` option.
+ * @property {Record<string, string>} [safeAddresses] - Binds accounts to existing safes, instead of the safes predicted from their owners (e.g. after an owner change). Maps an account key to the safe's address. The keys work like the manager's account cache keys, with full derivation paths as given by the accounts' `path` property: "m/44'/60'/0'/0/0" binds the account derived at that path from the default signer, "<signerName>:m/44'/60'/0'/0/0" the account derived at that path from a named signer, and "<signerName>" the account bound to a named signer (see {@link WalletManagerEvmErc4337#getAccount}). Each bound account checks its safe as described for the account's `safeAddress` option.
  */
 
 const BIP_44_ETH_DERIVATION_PATH_PREFIX = "m/44'/60'"
+
+const RELATIVE_DERIVATION_PATH_REGEX = /^\d+'?(\/\d+'?)*$/
 
 /** @extends {WalletManager<ISignerEvm>} */
 export default class WalletManagerEvmErc4337 extends WalletManager {
@@ -60,7 +60,7 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    * @param {EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions} config - The configuration object.
    * @throws {ValueError} If the seed phrase is invalid.
    * @throws {ValueError} If the `provider` option is set to an empty list.
-   * @throws {ConfigurationError} If a `safeAddresses` key is not a full derivation path.
+   * @throws {ValueError} If a `safeAddresses` key uses a derivation path that is not a full one.
    * @throws {ValueError} If a `safeAddresses` value is not a well-formed evm address.
    */
 
@@ -75,7 +75,7 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    * @param {EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions} config - The configuration object.
    * @throws {InvalidSignerError} If the default signer does not support account derivation.
    * @throws {ValueError} If the `provider` option is set to an empty list.
-   * @throws {ConfigurationError} If a `safeAddresses` key is not a full derivation path.
+   * @throws {ValueError} If a `safeAddresses` key uses a derivation path that is not a full one.
    * @throws {ValueError} If a `safeAddresses` value is not a well-formed evm address.
    */
 
@@ -84,9 +84,9 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
       throw new ValueError("The 'provider' option cannot be set to an empty list.")
     }
 
-    for (const [path, safeAddress] of Object.entries(config.safeAddresses ?? {})) {
-      if (!path.startsWith('m/')) {
-        throw new ConfigurationError(`The 'safeAddresses' keys must be full derivation paths (e.g. "m/44'/60'/0'/0/0"), got '${path}'.`)
+    for (const [key, safeAddress] of Object.entries(config.safeAddresses ?? {})) {
+      if (RELATIVE_DERIVATION_PATH_REGEX.test(key.slice(key.lastIndexOf(':') + 1))) {
+        throw new ValueError(`The 'safeAddresses' keys must use full derivation paths (e.g. "m/44'/60'/0'/0/0"), got '${key}'.`)
       }
 
       if (!isAddress(safeAddress)) {
@@ -157,7 +157,9 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
           throw new DisposalError('The given signer has been disposed.')
         }
 
-        this._accounts[key] = new WalletAccountEvmErc4337(signer, this._accountConfig())
+        const safeAddress = this._config.safeAddresses?.[key]
+
+        this._accounts[key] = new WalletAccountEvmErc4337(signer, { ...this._accountConfig(), safeAddress })
       }
 
       return this._accounts[key]
@@ -209,7 +211,7 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
         childSigner.dispose()
       } else {
         try {
-          const safeAddress = signerName ? undefined : this._config.safeAddresses?.[childSigner.path]
+          const safeAddress = this._config.safeAddresses?.[signerName ? `${signerName}:${childSigner.path}` : childSigner.path]
 
           this._accounts[key] = new WalletAccountEvmErc4337(childSigner, { ...this._accountConfig(), safeAddress, shouldWipeSignerOnDisposal: true })
         } catch (error) {
@@ -225,14 +227,14 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
 
   /**
    * Builds the account config, injecting the manager's shared provider so accounts reuse the
-   * single ethers provider instance instead of opening their own. The safe binding options are
-   * dropped: `safeAddresses` is resolved per account, and a `safeAddress` must not apply to every account.
+   * single ethers provider instance instead of opening their own. The `safeAddresses` option is
+   * dropped, since it is resolved per account.
    *
    * @private
    * @returns {EvmErc4337WalletConfig} The account configuration.
    */
   _accountConfig () {
-    const { safeAddress, safeAddresses, ...config } = this._config
+    const { safeAddresses, ...config } = this._config
 
     return { ...config, provider: this._provider }
   }

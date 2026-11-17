@@ -185,7 +185,6 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
      * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
      * @throws {ConfigurationError} If the override `config` is invalid or has missing required fields.
-     * @throws {ConfigurationError} If `safeAddress` is set and the signer cannot operate that safe.
      * @throws {ConfigurationError} If, in token mode, the configured `paymasterAddress` does not match the paymaster address returned by the paymaster RPC. This guards against the auto-generated ERC-20 approval targeting an unexpected paymaster contract.
      * @throws {TransactionError} If the paymaster reports AA50 (the account cannot repay the paymaster).
      */
@@ -240,15 +239,6 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
      * @returns {Promise<string>} The owner's address.
      */
     protected _getOwnerAddress(): Promise<string>;
-    /**
-     * Builds a safe account instance, after checking that the signer can operate the pinned safe (if any).
-     *
-     * @protected
-     * @param {EvmErc4337WalletConfig} [config] - The wallet configuration. Defaults to the instance configuration.
-     * @throws {ConfigurationError} If `safeAddress` is set and the signer cannot operate that safe.
-     * @returns {Promise<SafeAccountV0_3_0>} The safe account instance.
-     */
-    protected _getSmartAccount(config?: EvmErc4337WalletConfig): Promise<SafeAccountV0_3_0>;
     /**
      * Checks that the signer can operate the safe pinned through `safeAddress`. Nothing to check if no safe is pinned or
      * if it is the signer's own predicted safe; otherwise, it must be a deployed safe that counts the signer among its
@@ -305,7 +295,7 @@ export type EvmErc4337WalletNativeCoinsConfig = import("./wallet-account-read-on
 export type EvmErc4337ApproveOptions = ApproveOptions & EvmErc4337GasOverrides;
 export type EvmErc4337SafeOptions = {
     /**
-     * - The address of an existing safe to operate, instead of the safe predicted from the signer's address (e.g. after the safe's owner was changed). Unless it is the signer's own predicted safe, it must be a deployed safe that counts the signer among its owners; this is checked on the first operation that signs or builds a user operation.
+     * - The address of an existing safe to operate, instead of the safe predicted from the signer's address (e.g. after the safe's owner was changed). Unless it is the signer's own predicted safe, it must be a deployed safe that counts the signer among its owners; this is checked on the first operation that signs or sends.
      */
     safeAddress?: string;
 };

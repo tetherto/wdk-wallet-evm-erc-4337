@@ -339,6 +339,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       this._validateConfig(mergedConfig)
     }
 
+    await this._checkPinnedSafe()
+
     const prepared = await this._prepareForSend(tx, [tx], mergedConfig)
 
     const fee = prepared.fee
@@ -493,6 +495,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       return { hash, fee }
     }
 
+    await this._checkPinnedSafe()
+
     const txs = [tx].flat()
     const prepared = await this._prepareForSend(tx, txs, mergedConfig)
 
@@ -531,6 +535,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     }
 
     const { isSponsored, transferMaxFee } = mergedConfig
+
+    await this._checkPinnedSafe()
 
     const tx = await WalletAccountReadOnlyEvmErc4337._getTransferTransaction(options)
 
@@ -627,8 +633,6 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
   /** @private */
   async _prepareForSend (tx, txs, config) {
-    await this._checkPinnedSafe()
-
     const nonce = await this._resolveNonce(config)
 
     if (nonce === undefined) {

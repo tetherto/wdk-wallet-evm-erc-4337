@@ -35,12 +35,10 @@ import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
 
 /**
  * @typedef {Object} EvmErc4337WalletManagerSafeOptions
- * @property {Record<string, string>} [safeAddresses] - Binds accounts to existing safes, instead of the safes predicted from their owners (e.g. after an owner change). Maps an account key to the safe's address. The keys work like the manager's account cache keys, with full derivation paths as given by the accounts' `path` property: "m/44'/60'/0'/0/0" binds the account derived at that path from the default signer, "<signerName>:m/44'/60'/0'/0/0" the account derived at that path from a named signer, and "<signerName>" the account bound to a named signer (see {@link WalletManagerEvmErc4337#getAccount}). Each bound account checks its safe as described for the account's `safeAddress` option.
+ * @property {Record<string, string>} [safeAddresses] - Binds accounts to existing safes, instead of the safes predicted from their owners (e.g. after an owner change). Maps an account key to the safe's address. The keys are the manager's account cache keys, with derivation paths as given to {@link WalletManagerEvmErc4337#getAccountByPath}: "0'/0/0" binds the account derived at that path from the default signer (also returned by `getAccount(0)`), "<signerName>:0'/0/0" the account derived at that path from a named signer, and "<signerName>" the account bound to a named signer (see {@link WalletManagerEvmErc4337#getAccount}). Each bound account checks its safe as described for the account's `safeAddress` option.
  */
 
 const BIP_44_ETH_DERIVATION_PATH_PREFIX = "m/44'/60'"
-
-const RELATIVE_DERIVATION_PATH_REGEX = /^\d+'?(\/\d+'?)*$/
 
 /** @extends {WalletManager<ISignerEvm>} */
 export default class WalletManagerEvmErc4337 extends WalletManager {
@@ -60,7 +58,6 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    * @param {EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions} config - The configuration object.
    * @throws {ValueError} If the seed phrase is invalid.
    * @throws {ValueError} If the `provider` option is set to an empty list.
-   * @throws {ValueError} If a `safeAddresses` key uses a derivation path that is not a full one.
    * @throws {ValueError} If a `safeAddresses` value is not a well-formed evm address.
    */
 
@@ -75,7 +72,6 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    * @param {EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions} config - The configuration object.
    * @throws {InvalidSignerError} If the default signer does not support account derivation.
    * @throws {ValueError} If the `provider` option is set to an empty list.
-   * @throws {ValueError} If a `safeAddresses` key uses a derivation path that is not a full one.
    * @throws {ValueError} If a `safeAddresses` value is not a well-formed evm address.
    */
 
@@ -84,11 +80,7 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
       throw new ValueError("The 'provider' option cannot be set to an empty list.")
     }
 
-    for (const [key, safeAddress] of Object.entries(config.safeAddresses ?? {})) {
-      if (RELATIVE_DERIVATION_PATH_REGEX.test(key.slice(key.lastIndexOf(':') + 1))) {
-        throw new ValueError(`The 'safeAddresses' keys must use full derivation paths (e.g. "m/44'/60'/0'/0/0"), got '${key}'.`)
-      }
-
+    for (const safeAddress of Object.values(config.safeAddresses ?? {})) {
       if (!isAddress(safeAddress)) {
         throw new ValueError(`Invalid safe address: '${safeAddress}'.`)
       }
@@ -211,7 +203,7 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
         childSigner.dispose()
       } else {
         try {
-          const safeAddress = this._config.safeAddresses?.[signerName ? `${signerName}:${childSigner.path}` : childSigner.path]
+          const safeAddress = this._config.safeAddresses?.[key]
 
           this._accounts[key] = new WalletAccountEvmErc4337(childSigner, { ...this._accountConfig(), safeAddress, shouldWipeSignerOnDisposal: true })
         } catch (error) {

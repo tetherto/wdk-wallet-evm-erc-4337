@@ -112,10 +112,10 @@ A safe's address is derived from its owners, so after an owner change (key rotat
 const wallet = new WalletManagerEvmErc4337(newSeedPhrase, {
   ...config,
   safeAddresses: {
-    // The account derived at this path from the default signer
-    "m/44'/60'/0'/0/0": '0xYourSafe...',
+    // The account derived at this path from the default signer (getAccount(0))
+    "0'/0/0": '0xYourSafe...',
     // The account derived at this path from the signer named 'seed-signer-1'
-    "seed-signer-1:m/44'/60'/0'/0/0": '0xYourOtherSafe...',
+    "seed-signer-1:0'/0/0": '0xYourOtherSafe...',
     // The account bound to the signer named 'private-key-signer-1'
     'private-key-signer-1': '0xYourThirdSafe...'
   }
@@ -126,7 +126,7 @@ const account = new WalletAccountEvmErc4337(signer, { ...config, safeAddress: '0
 ```
 
 **Notes:**
-- `safeAddresses` keys work like the manager's account cache keys, but always with the full derivation path as given by `account.path` (`"m/44'/60'/0'/0/0"`), not the `getAccountByPath` suffix; a key with a relative path throws.
+- `safeAddresses` keys are the manager's account cache keys: the path as given to `getAccountByPath` (`"0'/0/0"`, which `getAccount(0)` also uses), prefixed with `"<signerName>:"` for a named signer, or just `"<signerName>"` for the account bound to a named signer.
 - Unless the address is the signer's own predicted safe, the first sign or send checks that a safe is deployed there and counts the signer among its owners, and throws a `ConfigurationError` otherwise. Quotes skip this check.
 
 ## Concurrent / Parallel Sends (nonce lanes)

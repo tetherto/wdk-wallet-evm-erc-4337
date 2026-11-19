@@ -90,7 +90,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         beforeEach(() => {
           pinnedWallet = new WalletManagerEvmErc4337(SEED_PHRASE, {
             ...SPONSORED_CONFIG,
-            safeAddresses: { "m/44'/60'/0'/0/0": PINNED_SAFE_ADDRESS }
+            safeAddresses: { "0'/0/0": PINNED_SAFE_ADDRESS }
           })
         })
 
@@ -98,7 +98,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           pinnedWallet.dispose()
         })
 
-        test('should bind the account at the given full path to its safe', async () => {
+        test('should bind the account at the given path to its safe', async () => {
           expect(await (await pinnedWallet.getAccount(0)).getAddress()).toBe(PINNED_SAFE_ADDRESS)
           expect(await (await pinnedWallet.getAccountByPath("0'/0/0")).getAddress()).toBe(PINNED_SAFE_ADDRESS)
         })
@@ -120,11 +120,11 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           namedSigner.dispose()
         })
 
-        test('should bind the account derived from a named signer at the given full path', async () => {
+        test('should bind the account derived from a named signer at the given path', async () => {
           const namedSigner = new SeedSignerEvm(SEED_PHRASE, "m/44'/60'")
           const namedWallet = new WalletManagerEvmErc4337(SEED_PHRASE, {
             ...SPONSORED_CONFIG,
-            safeAddresses: { "other:m/44'/60'/0'/0/1": PINNED_SAFE_ADDRESS }
+            safeAddresses: { "other:0'/0/1": PINNED_SAFE_ADDRESS }
           })
           namedWallet.addSigner('other', namedSigner)
 
@@ -149,15 +149,8 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           namedSigner.dispose()
         })
 
-        test('should throw if a key uses a relative derivation path', () => {
-          for (const key of ["0'/0/0", "other:0'/0/0"]) {
-            expect(() => new WalletManagerEvmErc4337(SEED_PHRASE, { ...SPONSORED_CONFIG, safeAddresses: { [key]: PINNED_SAFE_ADDRESS } }))
-              .toThrow(new ValueError(`The 'safeAddresses' keys must use full derivation paths (e.g. "m/44'/60'/0'/0/0"), got '${key}'.`))
-          }
-        })
-
         test('should throw if a safe address is not well-formed', () => {
-          expect(() => new WalletManagerEvmErc4337(SEED_PHRASE, { ...SPONSORED_CONFIG, safeAddresses: { "m/44'/60'/0'/0/0": '0x123' } }))
+          expect(() => new WalletManagerEvmErc4337(SEED_PHRASE, { ...SPONSORED_CONFIG, safeAddresses: { "0'/0/0": '0x123' } }))
             .toThrow(new ValueError("Invalid safe address: '0x123'."))
         })
       })

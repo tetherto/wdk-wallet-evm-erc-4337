@@ -8,7 +8,6 @@ export default class WalletManagerEvmErc4337 extends WalletManager<ISignerEvm> {
      * @param {EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions} config - The configuration object.
      * @throws {ValueError} If the seed phrase is invalid.
      * @throws {ValueError} If the `provider` option is set to an empty list.
-     * @throws {ValueError} If a `safeAddresses` key uses a derivation path that is not a full one.
      * @throws {ValueError} If a `safeAddresses` value is not a well-formed evm address.
      */
     constructor(seed: string | Uint8Array, config: EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions);
@@ -23,7 +22,6 @@ export default class WalletManagerEvmErc4337 extends WalletManager<ISignerEvm> {
      * @param {EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions} config - The configuration object.
      * @throws {InvalidSignerError} If the default signer does not support account derivation.
      * @throws {ValueError} If the `provider` option is set to an empty list.
-     * @throws {ValueError} If a `safeAddresses` key uses a derivation path that is not a full one.
      * @throws {ValueError} If a `safeAddresses` value is not a well-formed evm address.
      */
     constructor(signer: ISignerEvm, config: EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions);
@@ -113,7 +111,7 @@ export type NoSuchElementError = import("@tetherto/wdk-wallet").NoSuchElementErr
 export type EvmErc4337WalletConfig = import("./wallet-account-evm-erc-4337.js").EvmErc4337WalletConfig;
 export type EvmErc4337WalletManagerSafeOptions = {
     /**
-     * - Binds accounts to existing safes, instead of the safes predicted from their owners (e.g. after an owner change). Maps an account key to the safe's address. The keys work like the manager's account cache keys, with full derivation paths as given by the accounts' `path` property: "m/44'/60'/0'/0/0" binds the account derived at that path from the default signer, "<signerName>:m/44'/60'/0'/0/0" the account derived at that path from a named signer, and "<signerName>" the account bound to a named signer (see {@link WalletManagerEvmErc4337#getAccount}). Each bound account checks its safe as described for the account's `safeAddress` option.
+     * - Binds accounts to existing safes, instead of the safes predicted from their owners (e.g. after an owner change). Maps an account key to the safe's address. The keys are the manager's account cache keys, with derivation paths as given to {@link WalletManagerEvmErc4337#getAccountByPath}: "0'/0/0" binds the account derived at that path from the default signer (also returned by `getAccount(0)`), "<signerName>:0'/0/0" the account derived at that path from a named signer, and "<signerName>" the account bound to a named signer (see {@link WalletManagerEvmErc4337#getAccount}). Each bound account checks its safe as described for the account's `safeAddress` option.
      */
     safeAddresses?: Record<string, string>;
 };

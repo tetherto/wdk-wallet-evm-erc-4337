@@ -103,6 +103,32 @@ const account = WalletAccountEvmErc4337.fromPrivateKey(privateKey, config)
 - The safe's address is predicted from the signer's `getAddress()` on first use, so signers that only provide their address asynchronously (e.g. hardware signers) are supported.
 - `account.path` and `account.keyPair` are `null` for signers without a derivation path or key material.
 
+## Binding to an Existing Safe
+
+A safe's address is derived from its owners, so after an owner change (key rotation, a recovery module) the new owner's key predicts a different, undeployed safe. Bind the account to the existing safe instead:
+
+```javascript
+// Through the wallet manager (and WDK's registerWallet)
+const wallet = new WalletManagerEvmErc4337(newSeedPhrase, {
+  ...config,
+  safeAddresses: {
+    // The account derived at this path from the default signer (getAccount(0))
+    "0'/0/0": '0xYourSafe...',
+    // The account derived at this path from the signer named 'seed-signer-1'
+    "seed-signer-1:0'/0/0": '0xYourOtherSafe...',
+    // The account bound to the signer named 'private-key-signer-1'
+    'private-key-signer-1': '0xYourThirdSafe...'
+  }
+})
+
+// Or on a single account
+const account = new WalletAccountEvmErc4337(signer, { ...config, safeAddress: '0xYourSafe...' })
+```
+
+**Notes:**
+- `safeAddresses` keys are the manager's account cache keys: the path as given to `getAccountByPath` (`"0'/0/0"`, which `getAccount(0)` also uses), prefixed with `"<signerName>:"` for a named signer, or just `"<signerName>"` for the account bound to a named signer.
+- Unless the address is the signer's own predicted safe, the first sign or send checks that a safe is deployed there and counts the signer among its owners, and throws a `ConfigurationError` otherwise. Quotes skip this check.
+
 ## Concurrent / Parallel Sends (nonce lanes)
 
 By default every send uses the account's key-0 nonce, so it is sequential — a second send fired before the first is mined would collide on the nonce. To send independent operations concurrently, put each in its own **nonce lane** (an ERC-4337 two-dimensional nonce: a 192-bit `key` with its own sequence). Ops in different keys have no ordering constraint and validate independently, so they can be submitted at the same time.

@@ -217,7 +217,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     protected _getOwnerAddress(): Promise<string>;
     /**
      * Disposes the wallet account. The signer's private key is erased only if the account owns the signer (created from
-     * a seed or private key, or with `shouldWipeSignerOnDisposal`); a signer you supplied is left untouched.
+     * a seed or private key, or with `shouldWipeSignerOnDisposal`); otherwise a signer you supplied is left untouched.
      */
     dispose(): void;
     /** @private */

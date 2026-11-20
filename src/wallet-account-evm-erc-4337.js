@@ -487,6 +487,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       this._validateConfig(mergedConfig)
     }
 
+    await this._checkPinnedSafe()
+
     if (WalletAccountEvmErc4337._isSignedUserOperation(tx)) {
       const fee = mergedConfig.isSponsored ? 0n : WalletAccountEvmErc4337._getSignedUserOperationFee(tx)
 
@@ -494,8 +496,6 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
       return { hash, fee }
     }
-
-    await this._checkPinnedSafe()
 
     const txs = [tx].flat()
     const prepared = await this._prepareForSend(tx, txs, mergedConfig)

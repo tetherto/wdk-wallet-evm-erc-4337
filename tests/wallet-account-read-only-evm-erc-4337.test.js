@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals'
-import { Contract, Interface, TypedDataEncoder, hashMessage } from 'ethers'
+import { AbiCoder, Contract, Interface, TypedDataEncoder, concat, hashMessage } from 'ethers'
 import { NoSuchElementError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError, WdkError } from '@tetherto/wdk-wallet'
 
 const actualWalletEvm = await import('@tetherto/wdk-wallet-evm')
@@ -134,6 +134,13 @@ const EIP1193_PROVIDER = {
 
 const ERC1271_INTERFACE = new Interface(['function isValidSignature(bytes32 _dataHash, bytes _signature) view returns (bytes4)'])
 const ERC1271_MAGIC_VALUE_RESULT = '0x1626ba7e' + '00'.repeat(28)
+
+const ERC6492_MAGIC_BYTES = '0x' + '6492'.repeat(16)
+
+const wrapErc6492Signature = (signature) => concat([
+  AbiCoder.defaultAbiCoder().encode(['address', 'bytes', 'bytes'], ['0x' + '11'.repeat(20), '0x1234', signature]),
+  ERC6492_MAGIC_BYTES
+])
 
 function createErc1271Provider () {
   const ethCallMock = jest.fn()
@@ -285,6 +292,24 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           .toThrow(expect.objectContaining({ name: 'ValueError' }))
         expect(() => WalletAccountReadOnlyEvmErc4337.predictSafeAddress('not-an-address', { safeModulesVersion: '0.3.0' }))
           .toThrow(new ValueError("Invalid owner address: 'not-an-address'."))
+      })
+    })
+
+    describe('unwrapErc6492Signature', () => {
+      const SIGNATURE = '0x78d4361db73e2b4168dca0ad5abf3556c8381c3fc684cf2121e98a480d177e224d51cf8ac75f76ae3ac5453fb05ab70ae259885dceab18e7bd6007a72841829a1c'
+
+      test('should return the signature wrapped in an erc-6492 signature', () => {
+        expect(WalletAccountReadOnlyEvmErc4337.unwrapErc6492Signature(wrapErc6492Signature(SIGNATURE))).toBe(SIGNATURE)
+      })
+
+      test('should return signatures that are not erc-6492 signatures unchanged', () => {
+        expect(WalletAccountReadOnlyEvmErc4337.unwrapErc6492Signature(SIGNATURE)).toBe(SIGNATURE)
+        expect(WalletAccountReadOnlyEvmErc4337.unwrapErc6492Signature('not-a-signature')).toBe('not-a-signature')
+      })
+
+      test('should throw if the signature ends with the erc-6492 magic bytes but is malformed', () => {
+        expect(() => WalletAccountReadOnlyEvmErc4337.unwrapErc6492Signature(concat(['0xdead', ERC6492_MAGIC_BYTES])))
+          .toThrow(new ValueError('Invalid ERC-6492 signature.'))
       })
     })
 
@@ -994,6 +1019,18 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           expect(ethCallMock).not.toHaveBeenCalled()
         })
 
+        test('should check the signature wrapped in an erc-6492 signature through the safe', async () => {
+          const { provider, ethCallMock } = createErc1271Provider()
+          ethCallMock.mockResolvedValue(ERC1271_MAGIC_VALUE_RESULT)
+          const deployedAccount = new WalletAccountReadOnlyEvmErc4337(OWNER_ADDRESS, { ...SPONSORED_CONFIG, provider })
+
+          expect(await deployedAccount.verify(MESSAGE, wrapErc6492Signature(SAFE_MESSAGE_SIGNATURE))).toBe(true)
+          expect(ethCallMock).toHaveBeenCalledWith({
+            to: SAFE_ADDRESS.toLowerCase(),
+            data: ERC1271_INTERFACE.encodeFunctionData('isValidSignature', [hashMessage(MESSAGE), SAFE_MESSAGE_SIGNATURE])
+          })
+        })
+
         test('should check the deployment of the safe only once', async () => {
           const { provider, ethCallMock } = createErc1271Provider()
           ethCallMock.mockResolvedValue(ERC1271_MAGIC_VALUE_RESULT)
@@ -1034,6 +1071,18 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         test('should return false for a malformed signature', async () => {
           expect(await account.verify(MESSAGE, '0xdead')).toBe(false)
+        })
+
+        test('should return true for an erc-6492 signature wrapping a safe message signature by the owner', async () => {
+          expect(await account.verify(MESSAGE, wrapErc6492Signature(SAFE_MESSAGE_SIGNATURE))).toBe(true)
+        })
+
+        test('should return false for an erc-6492 signature wrapping the raw owner signature', async () => {
+          expect(await account.verify(MESSAGE, wrapErc6492Signature(RAW_OWNER_SIGNATURE))).toBe(false)
+        })
+
+        test('should return false for a malformed erc-6492 signature', async () => {
+          expect(await account.verify(MESSAGE, concat(['0xdead', ERC6492_MAGIC_BYTES]))).toBe(false)
         })
 
         test('should check the deployment of the safe again on the next call, until it is deployed', async () => {
@@ -1104,6 +1153,10 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         test('should return false for the raw owner signature', async () => {
           expect(await account.verifyTypedData(TYPED_DATA, RAW_OWNER_SIGNATURE)).toBe(false)
+        })
+
+        test('should return true for an erc-6492 signature wrapping a safe message signature by the owner', async () => {
+          expect(await account.verifyTypedData(TYPED_DATA, wrapErc6492Signature(SAFE_MESSAGE_SIGNATURE))).toBe(true)
         })
       })
     })

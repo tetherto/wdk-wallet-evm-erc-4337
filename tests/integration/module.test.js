@@ -2,6 +2,7 @@ import { describe, expect, test, beforeAll, beforeEach, afterEach, afterAll, jes
 import WalletManagerEvmErc4337 from '../../index.js'
 import { ethers } from 'ethers'
 import { fetchAccountNonce } from 'abstractionkit'
+import { createPublicClient, http } from 'viem'
 import { alto } from 'prool/instances'
 import { paymaster } from '@pimlico/mock-paymaster'
 import { MOCK_PAYMASTER_TOKEN_ADDRESS, mintMockTokens } from '../helpers/mock-paymaster-token.js'
@@ -394,6 +395,51 @@ describe('@wdk/wallet-evm-erc-4337', () => {
     const typedDataSignature = await account0.signTypedData(TYPED_DATA)
     const typedDataHash = ethers.TypedDataEncoder.hash(TYPED_DATA.domain, TYPED_DATA.types, TYPED_DATA.message)
     expect(await safe.isValidSignature(typedDataHash, typedDataSignature)).toBe('0x1626ba7e')
+  }, TIMEOUT)
+
+  test('should sign erc-6492 signatures that external verifiers accept while the safe is not deployed', async () => {
+    // An account whose safe no other test deploys.
+    const account = await wallet.getAccountByPath("0'/0/6492")
+    const safeAddress = await account.getAddress()
+
+    expect(await ethersProvider.getCode(safeAddress)).toBe('0x')
+
+    const MESSAGE = 'Hello, world!'
+    const TYPED_DATA = {
+      domain: { name: 'Test', version: '1', chainId: 1, verifyingContract: '0x0000000000000000000000000000000000000000' },
+      types: { Message: [{ name: 'content', type: 'string' }] },
+      message: { content: 'Hello, world!' }
+    }
+
+    const messageSignature = await account.sign(MESSAGE)
+    const typedDataSignature = await account.signTypedData(TYPED_DATA)
+
+    expect(messageSignature.endsWith('6492'.repeat(16))).toBe(true)
+
+    // viem verifies erc-6492 signatures by simulating the safe's deployment.
+    const client = createPublicClient({ transport: http('http://localhost:8545') })
+
+    expect(await client.verifyMessage({ address: safeAddress, message: MESSAGE, signature: messageSignature })).toBe(true)
+    expect(await client.verifyTypedData({ address: safeAddress, ...TYPED_DATA, primaryType: 'Message', signature: typedDataSignature })).toBe(true)
+    expect(await account.verify(MESSAGE, messageSignature)).toBe(true)
+
+    // Deploying the safe through the factory call embedded in the signature makes the inner signature valid on-chain.
+    const wrapper = ethers.dataSlice(messageSignature, 0, ethers.dataLength(messageSignature) - 32)
+    const [factory, factoryData, innerSignature] = ethers.AbiCoder.defaultAbiCoder().decode(['address', 'bytes', 'bytes'], wrapper)
+
+    const { blockNumber } = await (await fundedWallet.sendTransaction({ to: factory, data: factoryData })).wait()
+
+    // Read at the deployment's block: ethers briefly caches the identical 'latest' getCode call made above.
+    expect(await ethersProvider.getCode(safeAddress, blockNumber)).not.toBe('0x')
+
+    const safe = new ethers.Contract(safeAddress, [
+      'function isValidSignature(bytes32 _dataHash, bytes _signature) view returns (bytes4)'
+    ], ethersProvider)
+
+    expect(innerSignature).toBe(account.constructor.unwrapErc6492Signature(messageSignature))
+    expect(await safe.isValidSignature(ethers.hashMessage(MESSAGE), innerSignature)).toBe('0x1626ba7e')
+    expect(await account.verify(MESSAGE, messageSignature)).toBe(true)
+    expect(await account.sign(MESSAGE)).toBe(innerSignature)
   }, TIMEOUT)
 
   test('should reject a raw owner signature when verifying against the deployed safe', async () => {

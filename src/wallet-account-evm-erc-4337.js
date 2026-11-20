@@ -20,7 +20,8 @@ import { DisposalError, MaximumFeeExceededError, ProviderRequiredError, Transact
 
 import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm/signers'
 
-import { ENTRYPOINT_V7, calculateUserOperationMaxGasCost, fetchAccountNonce } from 'abstractionkit'
+// eslint-disable-next-line camelcase
+import { SafeAccountV0_3_0 as SafeAccount030, ENTRYPOINT_V7, calculateUserOperationMaxGasCost, fetchAccountNonce } from 'abstractionkit'
 
 import WalletAccountReadOnlyEvmErc4337, { FEE_TOLERANCE_COEFFICIENT } from './wallet-account-read-only-evm-erc-4337.js'
 
@@ -244,6 +245,10 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   /**
    * Signs a message as the safe (ERC-1271 / SafeMessage), so the safe's `isValidSignature` accepts it.
    *
+   * While the safe is not deployed, the signature is wrapped in an [ERC-6492](https://eips.ethereum.org/EIPS/eip-6492)
+   * signature, so that verifiers can simulate the safe's deployment to check it. Use
+   * {@link WalletAccountReadOnlyEvmErc4337.unwrapErc6492Signature} to get the ERC-1271 signature it wraps.
+   *
    * @param {string} message - The message to sign.
    * @returns {Promise<string>} The message's signature.
    * @throws {DisposalError} If the account, or the externally supplied signer it uses, has been disposed.
@@ -251,11 +256,15 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   async sign (message) {
     this._guardDisposed()
 
-    return await this._signer.signTypedData(await this._getSafeMessageTypedData(hashMessage(message)))
+    return await this._signSafeMessage(hashMessage(message))
   }
 
   /**
    * Signs typed data according to EIP-712 as the safe (ERC-1271 / SafeMessage), so the safe's `isValidSignature` accepts it.
+   *
+   * While the safe is not deployed, the signature is wrapped in an [ERC-6492](https://eips.ethereum.org/EIPS/eip-6492)
+   * signature, so that verifiers can simulate the safe's deployment to check it. Use
+   * {@link WalletAccountReadOnlyEvmErc4337.unwrapErc6492Signature} to get the ERC-1271 signature it wraps.
    *
    * @param {TypedData} typedData - The typed data to sign.
    * @returns {Promise<string>} The typed data signature.
@@ -264,7 +273,7 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   async signTypedData ({ domain, types, message }) {
     this._guardDisposed()
 
-    return await this._signer.signTypedData(await this._getSafeMessageTypedData(TypedDataEncoder.hash(domain, types, message)))
+    return await this._signSafeMessage(TypedDataEncoder.hash(domain, types, message))
   }
 
   /**
@@ -505,6 +514,29 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     const readOnlyAccount = new WalletAccountReadOnlyEvmErc4337(address, this._config)
 
     return readOnlyAccount
+  }
+
+  /**
+   * Signs a hash as the safe (ERC-1271 / SafeMessage). While the safe is not deployed, wraps the signature in an
+   * ERC-6492 signature that deploys the safe predicted from the signer's address.
+   *
+   * @private
+   * @param {string} hash - The hash of the message or typed data (EIP-191 / EIP-712).
+   * @returns {Promise<string>} The signature.
+   */
+  async _signSafeMessage (hash) {
+    const isDeployed = await this._isSafeDeployed()
+
+    const signature = await this._signer.signTypedData(await this._getSafeMessageTypedData(hash))
+
+    if (isDeployed) {
+      return signature
+    }
+
+    const overrides = WalletAccountReadOnlyEvmErc4337._getInitCodeOverrides(this._config)
+    const [factory, factoryData] = SafeAccount030.createFactoryAddressAndData([await this._getOwnerAddress()], overrides)
+
+    return WalletAccountReadOnlyEvmErc4337._wrapErc6492Signature(factory, factoryData, signature)
   }
 
   /**

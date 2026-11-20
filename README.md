@@ -73,7 +73,7 @@ that authenticate via the URL (e.g. an `apikey` query parameter) keep working un
 - **BIP-44 Derivation Paths**: Standard Ethereum derivation (m/44'/60')
 - **Multi-Account Management**: Derive multiple smart accounts from a single seed phrase
 - **ERC-20 Token Support**: Query balances and transfer tokens via UserOperations
-- **Message Signing**: Sign messages and typed data as the Safe (ERC-1271 / SafeMessage), and verify them against the Safe
+- **Message Signing**: Sign messages and typed data as the Safe (ERC-1271 / SafeMessage, wrapped in ERC-6492 until the Safe is deployed), and verify them against the Safe
 - **Per-Call Config Overrides**: Switch gas payment modes on a per-transaction basis
 - **Parallel Nonce Lanes**: Send independent operations concurrently via ERC-4337 two-dimensional nonces (`parallel: true` or a reusable `nonceKey`)
 - **Secure Memory Disposal**: Clear private keys from memory when done
@@ -102,6 +102,26 @@ const account = WalletAccountEvmErc4337.fromPrivateKey(privateKey, config)
 - A wallet created from a seed wipes its default signer on `dispose()`. Signers you supply are never wiped by the wallet, and an account wipes a signer you give it only with `shouldWipeSignerOnDisposal: true`.
 - The safe's address is predicted from the signer's `getAddress()` on first use, so signers that only provide their address asynchronously (e.g. hardware signers) are supported.
 - `account.path` and `account.keyPair` are `null` for signers without a derivation path or key material.
+
+## Signature Formats
+
+`sign()` and `signTypedData()` sign as the Safe, so the Safe's ERC-1271 `isValidSignature` accepts the signature:
+
+- **Deployed Safe:** a plain ERC-1271 (SafeMessage) signature.
+- **Safe not deployed yet:** the same signature wrapped in an [ERC-6492](https://eips.ethereum.org/EIPS/eip-6492) signature, which also carries the call that deploys the Safe. ERC-6492-aware verifiers (e.g. viem's `verifyMessage` / `verifyTypedData`) simulate the deployment and check it, so third parties can verify signatures from a Safe that has no code yet.
+
+`verify()` and `verifyTypedData()` accept both formats.
+
+A verifier that doesn't support ERC-6492 can't check a wrapped signature. This matters when a contract checks the signature through the Safe's `isValidSignature` after the Safe is deployed, e.g. a Permit2 permit or an order (CoW, Seaport, UniswapX) signed before the Safe's first transaction and settled later. Unwrap the signature for those:
+
+```javascript
+import { WalletAccountReadOnlyEvmErc4337 } from '@tetherto/wdk-wallet-evm-erc-4337'
+
+const signature = await account.signTypedData(permit)
+
+// The ERC-1271 signature; signatures that are not wrapped are returned unchanged.
+const erc1271Signature = WalletAccountReadOnlyEvmErc4337.unwrapErc6492Signature(signature)
+```
 
 ## Concurrent / Parallel Sends (nonce lanes)
 

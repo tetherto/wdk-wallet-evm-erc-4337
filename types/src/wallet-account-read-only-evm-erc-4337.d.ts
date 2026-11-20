@@ -26,6 +26,19 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     static fromSafeAddress(safeAddress: string, config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">): WalletAccountReadOnlyEvmErc4337;
     /**
+     * Returns the ERC-1271 signature inside an [ERC-6492](https://eips.ethereum.org/EIPS/eip-6492) signature, as
+     * returned by the account's `sign` and `signTypedData` methods while the safe is not deployed. Signatures that are
+     * not ERC-6492 signatures are returned unchanged.
+     *
+     * Useful for verifiers that do not support ERC-6492 and check the signature through the safe's
+     * `isValidSignature` once the safe is deployed (e.g. permits or orders settled on-chain after the deployment).
+     *
+     * @param {string} signature - The signature.
+     * @throws {ValueError} If the signature ends with the ERC-6492 magic bytes, but is not a well-formed ERC-6492 signature.
+     * @returns {string} The ERC-1271 signature.
+     */
+    static unwrapErc6492Signature(signature: string): string;
+    /**
      * Builds the init code overrides from the wallet configuration.
      *
      * @protected
@@ -199,7 +212,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     getAllowance(token: string, spender: string): Promise<bigint>;
     /**
-     * Verifies a message's signature, as produced by the safe (ERC-1271 / SafeMessage).
+     * Verifies a message's signature, as produced by the safe (ERC-1271 / SafeMessage). ERC-6492 signatures are
+     * accepted too, and checked through the ERC-1271 signature they wrap.
      *
      * If the safe is deployed, the signature is checked on-chain through the safe's `isValidSignature`. Otherwise,
      * it is checked offline against the safe's owner.
@@ -211,7 +225,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     verify(message: string, signature: string): Promise<boolean>;
     /**
-     * Verifies a typed data signature, as produced by the safe (ERC-1271 / SafeMessage).
+     * Verifies a typed data signature, as produced by the safe (ERC-1271 / SafeMessage). ERC-6492 signatures are
+     * accepted too, and checked through the ERC-1271 signature they wrap.
      *
      * If the safe is deployed, the signature is checked on-chain through the safe's `isValidSignature`. Otherwise,
      * it is checked offline against the safe's owner.
@@ -269,6 +284,17 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @returns {boolean} True if the error means that the signature is invalid.
      */
     protected static _isInvalidSignatureError(error: unknown): boolean;
+    /**
+     * Wraps an ERC-1271 signature of a safe that is not deployed yet in an [ERC-6492](https://eips.ethereum.org/EIPS/eip-6492)
+     * signature, so that verifiers can simulate the safe's deployment before calling its `isValidSignature`.
+     *
+     * @protected
+     * @param {string} factory - The address of the factory that deploys the safe.
+     * @param {string} factoryData - The calldata that deploys the safe through the factory.
+     * @param {string} signature - The ERC-1271 signature.
+     * @returns {string} The ERC-6492 signature.
+     */
+    protected static _wrapErc6492Signature(factory: string, factoryData: string, signature: string): string;
     /**
      * Returns whether the safe is deployed. A safe cannot be undeployed, so a positive result is cached.
      *

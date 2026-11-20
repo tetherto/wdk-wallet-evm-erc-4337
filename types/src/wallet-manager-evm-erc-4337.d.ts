@@ -100,7 +100,10 @@ export default class WalletManagerEvmErc4337 extends WalletManager<ISignerEvm> {
      */
     getFeeRates(): Promise<FeeRates>;
     /**
-     * Disposes all the wallet accounts, erasing their private keys from the memory.
+     * Disposes the wallet accounts, erasing their private keys from memory, and the default signer if the manager
+     * created it from a seed. Signers you supplied are never disposed, so an account created directly on one with
+     * getAccount(signerName) keeps its key. The seed you passed in is never wiped (a seed phrase string stays in memory
+     * until it is garbage collected).
      */
     dispose(): void;
 }

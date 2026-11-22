@@ -81,6 +81,80 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         expect(account.path).toBe("m/44'/60'/0'/0/3")
       })
 
+      describe('safeAddresses option', () => {
+        const PINNED_SAFE_ADDRESS = '0xFE0847a52f1C75A01B06cFC636c87683E72a6029'
+        const PRIVATE_KEY = '260905feebf1ec684f36f1599128b85f3a26c2b817f2065a2fc278398449c41f'
+
+        let pinnedWallet
+
+        beforeEach(() => {
+          pinnedWallet = new WalletManagerEvmErc4337(SEED_PHRASE, {
+            ...SPONSORED_CONFIG,
+            safeAddresses: { "0'/0/0": PINNED_SAFE_ADDRESS }
+          })
+        })
+
+        afterEach(() => {
+          pinnedWallet.dispose()
+        })
+
+        test('should bind the account at the given path to its safe', async () => {
+          expect(await (await pinnedWallet.getAccount(0)).getAddress()).toBe(PINNED_SAFE_ADDRESS)
+          expect(await (await pinnedWallet.getAccountByPath("0'/0/0")).getAddress()).toBe(PINNED_SAFE_ADDRESS)
+        })
+
+        test('should leave the other accounts unbound', async () => {
+          const account = await pinnedWallet.getAccount(1)
+
+          expect(await account.getAddress()).toBe(await (await wallet.getAccount(1)).getAddress())
+        })
+
+        test('should not apply the default signer keys to the accounts of named signers', async () => {
+          const namedSigner = new SeedSignerEvm(SEED_PHRASE, "m/44'/60'")
+          pinnedWallet.addSigner('other', namedSigner)
+
+          const account = await pinnedWallet.getAccount(0, { signerName: 'other' })
+
+          expect(await account.getAddress()).toBe(await (await wallet.getAccount(0)).getAddress())
+
+          namedSigner.dispose()
+        })
+
+        test('should bind the account derived from a named signer at the given path', async () => {
+          const namedSigner = new SeedSignerEvm(SEED_PHRASE, "m/44'/60'")
+          const namedWallet = new WalletManagerEvmErc4337(SEED_PHRASE, {
+            ...SPONSORED_CONFIG,
+            safeAddresses: { "other:0'/0/1": PINNED_SAFE_ADDRESS }
+          })
+          namedWallet.addSigner('other', namedSigner)
+
+          expect(await (await namedWallet.getAccount(1, { signerName: 'other' })).getAddress()).toBe(PINNED_SAFE_ADDRESS)
+          expect(await (await namedWallet.getAccount(1)).getAddress()).toBe(await (await wallet.getAccount(1)).getAddress())
+
+          namedWallet.dispose()
+          namedSigner.dispose()
+        })
+
+        test('should bind the account bound to a named signer', async () => {
+          const namedSigner = new PrivateKeySignerEvm(PRIVATE_KEY)
+          const namedWallet = new WalletManagerEvmErc4337(SEED_PHRASE, {
+            ...SPONSORED_CONFIG,
+            safeAddresses: { other: PINNED_SAFE_ADDRESS }
+          })
+          namedWallet.addSigner('other', namedSigner)
+
+          expect(await (await namedWallet.getAccount('other')).getAddress()).toBe(PINNED_SAFE_ADDRESS)
+
+          namedWallet.dispose()
+          namedSigner.dispose()
+        })
+
+        test('should throw if a safe address is not well-formed', () => {
+          expect(() => new WalletManagerEvmErc4337(SEED_PHRASE, { ...SPONSORED_CONFIG, safeAddresses: { "0'/0/0": '0x123' } }))
+            .toThrow(new ValueError("Invalid safe address: '0x123'."))
+        })
+      })
+
       test('should cache and return the same account for the same index', async () => {
         const account1 = await wallet.getAccount(0)
         const account2 = await wallet.getAccount(0)

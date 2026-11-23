@@ -729,7 +729,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
         return result.toLowerCase() === ERC1271_MAGIC_VALUE
       } catch (error) {
-        if (WalletAccountReadOnlyEvmErc4337._isInvalidSignatureError(error)) {
+        if (WalletAccountReadOnlyEvmErc4337._isRejectedCallError(error)) {
           return false
         }
 
@@ -759,14 +759,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Returns whether an `isValidSignature` error means the signature is invalid (revert, bad input or output),
-   * rather than a failed check (e.g. a network error). ethers reports any EIP-1193 `eth_call` error as a CALL_EXCEPTION.
+   * Returns whether a contract call error means the contract rejected the call (revert, bad input or output),
+   * rather than the call failing (e.g. a network error). ethers reports any EIP-1193 `eth_call` error as a CALL_EXCEPTION.
    *
    * @protected
    * @param {unknown} error - The error.
-   * @returns {boolean} True if the error means that the signature is invalid.
+   * @returns {boolean} True if the contract rejected the call.
    */
-  static _isInvalidSignatureError (error) {
+  static _isRejectedCallError (error) {
     if (isError(error, 'INVALID_ARGUMENT') || isError(error, 'BAD_DATA')) {
       return true
     }

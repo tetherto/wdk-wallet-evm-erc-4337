@@ -276,14 +276,14 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      */
     protected _verifySafeMessage(hash: string, signature: string, methodName: string): Promise<boolean>;
     /**
-     * Returns whether an `isValidSignature` error means the signature is invalid (revert, bad input or output),
-     * rather than a failed check (e.g. a network error). ethers reports any EIP-1193 `eth_call` error as a CALL_EXCEPTION.
+     * Returns whether a contract call error means the contract rejected the call (revert, bad input or output),
+     * rather than the call failing (e.g. a network error). ethers reports any EIP-1193 `eth_call` error as a CALL_EXCEPTION.
      *
      * @protected
      * @param {unknown} error - The error.
-     * @returns {boolean} True if the error means that the signature is invalid.
+     * @returns {boolean} True if the contract rejected the call.
      */
-    protected static _isInvalidSignatureError(error: unknown): boolean;
+    protected static _isRejectedCallError(error: unknown): boolean;
     /**
      * Wraps an ERC-1271 signature of a safe that is not deployed yet in an [ERC-6492](https://eips.ethereum.org/EIPS/eip-6492)
      * signature, so that verifiers can simulate the safe's deployment before calling its `isValidSignature`.

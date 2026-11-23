@@ -14,6 +14,8 @@
 
 'use strict'
 
+import { isAddress } from 'ethers'
+
 import WalletManager, { DisposalError, InvalidSignerError, ProviderRequiredError, ValueError } from '@tetherto/wdk-wallet'
 
 import WalletManagerEvm, { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
@@ -30,6 +32,11 @@ import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js'
 /** @typedef {import('@tetherto/wdk-wallet').NoSuchElementError} NoSuchElementError */
 
 /** @typedef {import('./wallet-account-evm-erc-4337.js').EvmErc4337WalletConfig} EvmErc4337WalletConfig */
+
+/**
+ * @typedef {Object} EvmErc4337WalletManagerSafeOptions
+ * @property {Record<string, string>} [safeAddresses] - Binds accounts to existing safes, instead of the safes predicted from their owners (e.g. after an owner change). Maps an account key to the safe's address. The keys are the manager's account cache keys, with derivation paths as given to {@link WalletManagerEvmErc4337#getAccountByPath}: "0'/0/0" binds the account derived at that path from the default signer (also returned by `getAccount(0)`), "<signerName>:0'/0/0" the account derived at that path from a named signer, and "<signerName>" the account bound to a named signer (see {@link WalletManagerEvmErc4337#getAccount}). Each bound account checks its safe as described for the account's `safeAddress` option.
+ */
 
 const BIP_44_ETH_DERIVATION_PATH_PREFIX = "m/44'/60'"
 
@@ -48,9 +55,10 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    *
    * @overload
    * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
-   * @param {EvmErc4337WalletConfig} config - The configuration object.
+   * @param {EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions} config - The configuration object.
    * @throws {ValueError} If the seed phrase is invalid.
    * @throws {ValueError} If the `provider` option is set to an empty list.
+   * @throws {ValueError} If a `safeAddresses` value is not a well-formed evm address.
    */
 
   /**
@@ -61,14 +69,21 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
    *
    * @overload
    * @param {ISignerEvm} signer - The default signer.
-   * @param {EvmErc4337WalletConfig} config - The configuration object.
+   * @param {EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions} config - The configuration object.
    * @throws {InvalidSignerError} If the default signer does not support account derivation.
    * @throws {ValueError} If the `provider` option is set to an empty list.
+   * @throws {ValueError} If a `safeAddresses` value is not a well-formed evm address.
    */
 
   constructor (seedOrSigner, config) {
     if (Array.isArray(config.provider) && config.provider.length === 0) {
       throw new ValueError("The 'provider' option cannot be set to an empty list.")
+    }
+
+    for (const safeAddress of Object.values(config.safeAddresses ?? {})) {
+      if (!isAddress(safeAddress)) {
+        throw new ValueError(`Invalid safe address: '${safeAddress}'.`)
+      }
     }
 
     const isSeed = typeof seedOrSigner === 'string' || seedOrSigner instanceof Uint8Array
@@ -87,7 +102,7 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
      * The evm erc-4337 wallet configuration.
      *
      * @protected
-     * @type {EvmErc4337WalletConfig}
+     * @type {EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions}
      */
     this._config = config
 
@@ -134,7 +149,9 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
           throw new DisposalError('The given signer has been disposed.')
         }
 
-        this._accounts[key] = new WalletAccountEvmErc4337(signer, this._accountConfig())
+        const safeAddress = this._config.safeAddresses?.[key]
+
+        this._accounts[key] = new WalletAccountEvmErc4337(signer, { ...this._accountConfig(), safeAddress })
       }
 
       return this._accounts[key]
@@ -186,7 +203,9 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
         childSigner.dispose()
       } else {
         try {
-          this._accounts[key] = new WalletAccountEvmErc4337(childSigner, { ...this._accountConfig(), shouldWipeSignerOnDisposal: true })
+          const safeAddress = this._config.safeAddresses?.[key]
+
+          this._accounts[key] = new WalletAccountEvmErc4337(childSigner, { ...this._accountConfig(), safeAddress, shouldWipeSignerOnDisposal: true })
         } catch (error) {
           childSigner.dispose()
 
@@ -200,13 +219,16 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
 
   /**
    * Builds the account config, injecting the manager's shared provider so accounts reuse the
-   * single ethers provider instance instead of opening their own.
+   * single ethers provider instance instead of opening their own. The `safeAddresses` option is
+   * dropped, since it is resolved per account.
    *
    * @private
    * @returns {EvmErc4337WalletConfig} The account configuration.
    */
   _accountConfig () {
-    return { ...this._config, provider: this._provider }
+    const { safeAddresses, ...config } = this._config
+
+    return { ...config, provider: this._provider }
   }
 
   /**
@@ -231,7 +253,10 @@ export default class WalletManagerEvmErc4337 extends WalletManager {
   }
 
   /**
-   * Disposes all the wallet accounts, erasing their private keys from the memory.
+   * Disposes the wallet accounts, erasing their private keys from memory, and the default signer if the manager created
+   * it from a seed. Signers you supplied are never disposed, so an account created directly on one with
+   * getAccount(signerName) keeps its key. The seed you passed in is never wiped (a seed phrase string stays in memory
+   * until it is garbage collected).
    */
   dispose () {
     if (this._shouldWipeDefaultSignerOnDisposal) {

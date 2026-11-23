@@ -5,11 +5,12 @@ export default class WalletManagerEvmErc4337 extends WalletManager<ISignerEvm> {
      *
      * @overload
      * @param {string | Uint8Array} seed - A [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
-     * @param {EvmErc4337WalletConfig} config - The configuration object.
+     * @param {EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions} config - The configuration object.
      * @throws {ValueError} If the seed phrase is invalid.
      * @throws {ValueError} If the `provider` option is set to an empty list.
+     * @throws {ValueError} If a `safeAddresses` value is not a well-formed evm address.
      */
-    constructor(seed: string | Uint8Array, config: EvmErc4337WalletConfig);
+    constructor(seed: string | Uint8Array, config: EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions);
     /**
      * Creates a new wallet manager for evm blockchains that implements the [erc-4337](https://www.erc4337.io/docs) standard from a default signer.
      *
@@ -18,11 +19,12 @@ export default class WalletManagerEvmErc4337 extends WalletManager<ISignerEvm> {
      *
      * @overload
      * @param {ISignerEvm} signer - The default signer.
-     * @param {EvmErc4337WalletConfig} config - The configuration object.
+     * @param {EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions} config - The configuration object.
      * @throws {InvalidSignerError} If the default signer does not support account derivation.
      * @throws {ValueError} If the `provider` option is set to an empty list.
+     * @throws {ValueError} If a `safeAddresses` value is not a well-formed evm address.
      */
-    constructor(signer: ISignerEvm, config: EvmErc4337WalletConfig);
+    constructor(signer: ISignerEvm, config: EvmErc4337WalletConfig & EvmErc4337WalletManagerSafeOptions);
     /**
      * An ethers provider to interact with a node of the blockchain.
      *
@@ -83,7 +85,8 @@ export default class WalletManagerEvmErc4337 extends WalletManager<ISignerEvm> {
     }): Promise<WalletAccountEvmErc4337>;
     /**
      * Builds the account config, injecting the manager's shared provider so accounts reuse the
-     * single ethers provider instance instead of opening their own.
+     * single ethers provider instance instead of opening their own. The `safeAddresses` option is
+     * dropped, since it is resolved per account.
      *
      * @private
      * @returns {EvmErc4337WalletConfig} The account configuration.
@@ -97,7 +100,10 @@ export default class WalletManagerEvmErc4337 extends WalletManager<ISignerEvm> {
      */
     getFeeRates(): Promise<FeeRates>;
     /**
-     * Disposes all the wallet accounts, erasing their private keys from the memory.
+     * Disposes the wallet accounts, erasing their private keys from memory, and the default signer if the manager
+     * created it from a seed. Signers you supplied are never disposed, so an account created directly on one with
+     * getAccount(signerName) keeps its key. The seed you passed in is never wiped (a seed phrase string stays in memory
+     * until it is garbage collected).
      */
     dispose(): void;
 }
@@ -106,5 +112,11 @@ export type FeeRates = import("@tetherto/wdk-wallet-evm").FeeRates;
 export type ISignerEvm = import("@tetherto/wdk-wallet-evm/signers").ISignerEvm;
 export type NoSuchElementError = import("@tetherto/wdk-wallet").NoSuchElementError;
 export type EvmErc4337WalletConfig = import("./wallet-account-evm-erc-4337.js").EvmErc4337WalletConfig;
+export type EvmErc4337WalletManagerSafeOptions = {
+    /**
+     * - Binds accounts to existing safes, instead of the safes predicted from their owners (e.g. after an owner change). Maps an account key to the safe's address. The keys are the manager's account cache keys, with derivation paths as given to {@link WalletManagerEvmErc4337#getAccountByPath}: "0'/0/0" binds the account derived at that path from the default signer (also returned by `getAccount(0)`), "<signerName>:0'/0/0" the account derived at that path from a named signer, and "<signerName>" the account bound to a named signer (see {@link WalletManagerEvmErc4337#getAccount}). Each bound account checks its safe as described for the account's `safeAddress` option.
+     */
+    safeAddresses?: Record<string, string>;
+};
 import WalletManager from '@tetherto/wdk-wallet';
 import WalletAccountEvmErc4337 from './wallet-account-evm-erc-4337.js';

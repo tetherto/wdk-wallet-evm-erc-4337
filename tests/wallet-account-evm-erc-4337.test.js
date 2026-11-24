@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals'
 import * as bip39 from 'bip39'
-import { AbiCoder, Contract, TypedDataEncoder, hashMessage, keccak256, toUtf8Bytes } from 'ethers'
+import { AbiCoder, Contract, TypedDataEncoder, dataLength, dataSlice, hashMessage, keccak256, toUtf8Bytes } from 'ethers'
 import { DisposalError, InvalidSignerError, MaximumFeeExceededError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm/signers'
 
@@ -38,6 +38,7 @@ const SafeAccountMock = jest.fn().mockImplementation((address) => ({
 }))
 SafeAccountMock.createAccountAddress = actualAk.SafeAccountV0_3_0.createAccountAddress.bind(actualAk.SafeAccountV0_3_0)
 SafeAccountMock.isDeployed = isDeployedMock
+SafeAccountMock.createFactoryAddressAndData = actualAk.SafeAccountV0_3_0.createFactoryAddressAndData.bind(actualAk.SafeAccountV0_3_0)
 
 const BundlerMock = jest.fn().mockImplementation(() => ({
   sendUserOperation: sendUserOperationMock,
@@ -134,6 +135,14 @@ const PAYMASTER_TOKEN_CONFIG = {
 }
 
 const toHex = (bytes) => Buffer.from(bytes).toString('hex')
+
+const ERC6492_MAGIC_BYTES = '0x' + '6492'.repeat(16)
+
+// Splits an erc-6492 signature into its suffix and its (factory, factoryData, signature) wrapper.
+const decodeErc6492Signature = (signature) => ({
+  suffix: dataSlice(signature, dataLength(signature) - 32),
+  wrapper: AbiCoder.defaultAbiCoder().decode(['address', 'bytes', 'bytes'], dataSlice(signature, 0, dataLength(signature) - 32))
+})
 
 describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
   describe('WalletAccountEvmErc4337', () => {
@@ -556,6 +565,31 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           message: { message: hashMessage(MESSAGE) }
         })
       })
+
+      describe('when the safe is not deployed', () => {
+        beforeEach(() => {
+          isDeployedMock.mockResolvedValue(false)
+        })
+
+        test('should wrap the safe message signature in an erc-6492 signature that deploys the safe', async () => {
+          const signature = await account.sign(MESSAGE)
+
+          const { suffix, wrapper: [factory, factoryData, innerSignature] } = decodeErc6492Signature(signature)
+          const [expectedFactory, expectedFactoryData] = actualAk.SafeAccountV0_3_0.createFactoryAddressAndData([ACCOUNT.address], INIT_CODE_OVERRIDES)
+
+          expect(suffix).toBe(ERC6492_MAGIC_BYTES)
+          expect(factory).toBe(expectedFactory)
+          expect(factoryData).toBe(expectedFactoryData)
+          expect(innerSignature).toBe(EXPECTED_SIGNATURE)
+        })
+
+        test('should return a signature that the account verifies and that unwraps to the safe message signature', async () => {
+          const signature = await account.sign(MESSAGE)
+
+          expect(await account.verify(MESSAGE, signature)).toBe(true)
+          expect(WalletAccountEvmErc4337.unwrapErc6492Signature(signature)).toBe(EXPECTED_SIGNATURE)
+        })
+      })
     })
 
     describe('signTypedData', () => {
@@ -596,6 +630,18 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
           types: { SafeMessage: [{ type: 'bytes', name: 'message' }] },
           message: { message: TypedDataEncoder.hash(TYPED_DATA.domain, TYPED_DATA.types, TYPED_DATA.message) }
         })
+      })
+
+      test('should wrap the safe message signature in an erc-6492 signature while the safe is not deployed', async () => {
+        isDeployedMock.mockResolvedValue(false)
+
+        const signature = await account.signTypedData(TYPED_DATA)
+
+        const { suffix, wrapper: [, , innerSignature] } = decodeErc6492Signature(signature)
+
+        expect(suffix).toBe(ERC6492_MAGIC_BYTES)
+        expect(innerSignature).toBe(EXPECTED_TYPED_DATA_SIGNATURE)
+        expect(await account.verifyTypedData(TYPED_DATA, signature)).toBe(true)
       })
     })
 

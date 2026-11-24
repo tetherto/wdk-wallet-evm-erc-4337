@@ -14,7 +14,7 @@
 
 'use strict'
 
-import { Contract, TypedDataEncoder, getAddress, hashMessage, isAddress, isError, isHexString, verifyTypedData } from 'ethers'
+import { AbiCoder, Contract, TypedDataEncoder, concat, dataLength, dataSlice, getAddress, hashMessage, isAddress, isError, isHexString, verifyTypedData } from 'ethers'
 
 import { WalletAccountReadOnly, NoSuchElementError, TransactionError, TransactionErrorReason, UnsupportedOperationError, ValueError } from '@tetherto/wdk-wallet'
 
@@ -43,6 +43,10 @@ const ERC1271_MAGIC_VALUE = '0x1626ba7e'
 const ERC1271_ABI = [
   'function isValidSignature(bytes32 _dataHash, bytes _signature) view returns (bytes4)'
 ]
+
+const ERC6492_MAGIC_BYTES = '0x' + '6492'.repeat(16)
+
+const ERC6492_WRAPPER_TYPES = ['address', 'bytes', 'bytes']
 
 const PaymasterMode = {
   NATIVE: 'native',
@@ -332,6 +336,37 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
+   * Returns the ERC-1271 signature inside an [ERC-6492](https://eips.ethereum.org/EIPS/eip-6492) signature, as
+   * returned by the account's `sign` and `signTypedData` methods while the safe is not deployed. Signatures that are
+   * not ERC-6492 signatures are returned unchanged.
+   *
+   * Useful for verifiers that do not support ERC-6492 and check the signature through the safe's
+   * `isValidSignature` once the safe is deployed (e.g. permits or orders settled on-chain after the deployment).
+   *
+   * @param {string} signature - The signature.
+   * @throws {ValueError} If the signature ends with the ERC-6492 magic bytes, but is not a well-formed ERC-6492 signature.
+   * @returns {string} The ERC-1271 signature.
+   */
+  static unwrapErc6492Signature (signature) {
+    if (!isHexString(signature) || !signature.toLowerCase().endsWith(ERC6492_MAGIC_BYTES.slice(2))) {
+      return signature
+    }
+
+    try {
+      const wrapper = dataSlice(signature, 0, dataLength(signature) - dataLength(ERC6492_MAGIC_BYTES))
+      const [, , innerSignature] = AbiCoder.defaultAbiCoder().decode(ERC6492_WRAPPER_TYPES, wrapper)
+
+      return innerSignature
+    } catch (error) {
+      if (isError(error, 'BUFFER_OVERRUN') || isError(error, 'INVALID_ARGUMENT')) {
+        throw new ValueError('Invalid ERC-6492 signature.')
+      }
+
+      throw error
+    }
+  }
+
+  /**
    * Returns the account's eth balance.
    *
    * @returns {Promise<bigint>} The eth balance (in weis).
@@ -549,7 +584,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Verifies a message's signature, as produced by the safe (ERC-1271 / SafeMessage).
+   * Verifies a message's signature, as produced by the safe (ERC-1271 / SafeMessage). ERC-6492 signatures are
+   * accepted too, and checked through the ERC-1271 signature they wrap.
    *
    * If the safe is deployed, the signature is checked on-chain through the safe's `isValidSignature`. Otherwise,
    * it is checked offline against the safe's owner.
@@ -564,7 +600,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /**
-   * Verifies a typed data signature, as produced by the safe (ERC-1271 / SafeMessage).
+   * Verifies a typed data signature, as produced by the safe (ERC-1271 / SafeMessage). ERC-6492 signatures are
+   * accepted too, and checked through the ERC-1271 signature they wrap.
    *
    * If the safe is deployed, the signature is checked on-chain through the safe's `isValidSignature`. Otherwise,
    * it is checked offline against the safe's owner.
@@ -678,6 +715,16 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @returns {Promise<boolean>} True if the signature is valid.
    */
   async _verifySafeMessage (hash, signature, methodName) {
+    try {
+      signature = WalletAccountReadOnlyEvmErc4337.unwrapErc6492Signature(signature)
+    } catch (error) {
+      if (error instanceof ValueError) {
+        return false
+      }
+
+      throw error
+    }
+
     if (await this._isSafeDeployed()) {
       const safe = new Contract(await this.getAddress(), ERC1271_ABI, this._provider)
 
@@ -739,6 +786,22 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     const rpcError = error.info?.error
 
     return rpcError?.code === 3 || /revert/i.test(rpcError?.message ?? '')
+  }
+
+  /**
+   * Wraps an ERC-1271 signature of a safe that is not deployed yet in an [ERC-6492](https://eips.ethereum.org/EIPS/eip-6492)
+   * signature, so that verifiers can simulate the safe's deployment before calling its `isValidSignature`.
+   *
+   * @protected
+   * @param {string} factory - The address of the factory that deploys the safe.
+   * @param {string} factoryData - The calldata that deploys the safe through the factory.
+   * @param {string} signature - The ERC-1271 signature.
+   * @returns {string} The ERC-6492 signature.
+   */
+  static _wrapErc6492Signature (factory, factoryData, signature) {
+    const wrapper = AbiCoder.defaultAbiCoder().encode(ERC6492_WRAPPER_TYPES, [factory, factoryData, signature])
+
+    return concat([wrapper, ERC6492_MAGIC_BYTES])
   }
 
   /**

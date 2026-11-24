@@ -358,7 +358,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
 
       return innerSignature
     } catch (error) {
-      throw new ValueError('Invalid ERC-6492 signature.')
+      if (isError(error, 'BUFFER_OVERRUN') || isError(error, 'INVALID_ARGUMENT')) {
+        throw new ValueError('Invalid ERC-6492 signature.')
+      }
+
+      throw error
     }
   }
 

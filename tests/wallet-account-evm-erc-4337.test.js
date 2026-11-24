@@ -175,9 +175,7 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
       test('should throw if the seed phrase is invalid', () => {
         expect(() => { new WalletAccountEvmErc4337(INVALID_SEED_PHRASE, "0'/0/0", SPONSORED_CONFIG) })
-          .toThrow(ValueError)
-        expect(() => { new WalletAccountEvmErc4337(INVALID_SEED_PHRASE, "0'/0/0", SPONSORED_CONFIG) })
-          .toThrow('The seed phrase is invalid.')
+          .toThrow(new ValueError('The seed phrase is invalid.'))
       })
 
       test('should throw if the path is invalid', () => {

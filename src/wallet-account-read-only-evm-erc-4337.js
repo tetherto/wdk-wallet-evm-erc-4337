@@ -221,7 +221,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
       ? [config, address]
       : [unpinnedConfig, undefined]
 
-    super(pinnedSafeAddress ?? (address ? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config) : undefined))
+    super(pinnedSafeAddress ?? (address ? WalletAccountReadOnlyEvmErc4337.predictSafeAddress(address, config) : undefined), accountConfig)
 
     /**
      * The read-only evm erc-4337 wallet account configuration.

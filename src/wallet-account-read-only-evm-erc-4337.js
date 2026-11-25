@@ -166,8 +166,8 @@ export const FEE_TOLERANCE_COEFFICIENT = 120n
  * @property {string} paymasterAddress - The address of the paymaster smart contract.
  * @property {Object} paymasterToken - The paymaster token configuration.
  * @property {string} paymasterToken.address - The address of the paymaster token.
- * @property {number | bigint} [transferMaxFee] - The maximum fee amount for transfer operations.
- * @property {number | bigint} [transactionMaxFee] - The maximum fee amount for sendTransaction and signTransaction operations.
+ * @property {number | bigint} [transferMaxFee] - The maximum fee amount for transfer operations, in paymaster token base units. When set, it is also the amount a transfer approves to the paymaster.
+ * @property {number | bigint} [transactionMaxFee] - The maximum fee amount for sendTransaction and signTransaction operations, in paymaster token base units. When set, it is also the amount those operations approve to the paymaster.
  */
 
 /**
@@ -1018,10 +1018,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
    * @param {MetaTransaction[]} calls - The meta-transactions to include in the UserOperation.
    * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The wallet configuration.
    * @param {EvmErc4337GasOverrides & Nonce} [txOverrides] - Optional UserOperationV7 gas overrides extracted from the input transaction(s), plus an optional explicit lane `nonce`.
+   * @param {bigint} [approveAmount] - In token mode, the amount the operation approves to the paymaster instead of the paymaster client's default (twice the token cost).
    * @returns {Promise<BuiltUserOperation>} The built operation, signing context, and (in token mode) the paymaster quote.
    * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
    */
-  async _buildUserOperation (calls, config, txOverrides = {}) {
+  async _buildUserOperation (calls, config, txOverrides = {}, approveAmount) {
     const chainId = await this._getChainId()
     const smartAccount = await this._getSmartAccount(config)
 
@@ -1047,7 +1048,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     }
 
     const { userOp, tokenQuote } = await this._applyPaymasterToUserOp({
-      mode, smartAccount, userOp: baseUserOp, config, chainId, txOverrides
+      mode, smartAccount, userOp: baseUserOp, config, chainId, txOverrides, approveAmount
     })
     return { userOp, smartAccount, mode, chainId, tokenQuote }
   }
@@ -1142,6 +1143,18 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /** @private */
+  static _paymasterApproveAmount (config, maxFee) {
+    return WalletAccountReadOnlyEvmErc4337._resolvePaymasterMode(config) === PaymasterMode.TOKEN && maxFee !== undefined
+      ? BigInt(maxFee)
+      : undefined
+  }
+
+  /** @private */
+  static _isApproveBelowCostError (err) {
+    return err instanceof AbstractionKitError && err.context?.approveAmount !== undefined && err.context?.tokenCost !== undefined
+  }
+
+  /** @private */
   static _resolvePaymasterMode (config) {
     if (config.useNativeCoins) return PaymasterMode.NATIVE
     if (config.isSponsored) return PaymasterMode.SPONSORED
@@ -1172,7 +1185,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
   }
 
   /** @private */
-  async _applyPaymasterToUserOp ({ mode, smartAccount, userOp, config, chainId, txOverrides = {} }) {
+  async _applyPaymasterToUserOp ({ mode, smartAccount, userOp, config, chainId, txOverrides = {}, approveAmount }) {
     const erc7677 = this._getPaymaster(config.paymasterUrl, config.paymasterHeaders, { chainId: BigInt(chainId) })
 
     const context = mode === PaymasterMode.TOKEN
@@ -1183,6 +1196,7 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
     if (txOverrides.callGasLimit !== undefined) paymasterOverrides.callGasLimit = txOverrides.callGasLimit
     if (txOverrides.verificationGasLimit !== undefined) paymasterOverrides.verificationGasLimit = txOverrides.verificationGasLimit
     if (txOverrides.preVerificationGas !== undefined) paymasterOverrides.preVerificationGas = txOverrides.preVerificationGas
+    if (mode === PaymasterMode.TOKEN && approveAmount !== undefined) paymasterOverrides.approveAmount = approveAmount
 
     const bundlerRpc = WalletAccountReadOnlyEvmErc4337._rpcTarget(config.bundlerUrl, config.bundlerHeaders)
     const result = await erc7677.createPaymasterUserOperation(

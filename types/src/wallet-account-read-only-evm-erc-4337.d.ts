@@ -373,10 +373,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @param {MetaTransaction[]} calls - The meta-transactions to include in the UserOperation.
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The wallet configuration.
      * @param {EvmErc4337GasOverrides & Nonce} [txOverrides] - Optional UserOperationV7 gas overrides extracted from the input transaction(s), plus an optional explicit lane `nonce`.
+     * @param {bigint} [approveAmount] - In token mode, the amount the operation approves to the paymaster instead of the paymaster client's default (twice the token cost).
      * @returns {Promise<BuiltUserOperation>} The built operation, signing context, and (in token mode) the paymaster quote.
      * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
      */
-    protected _buildUserOperation(calls: import('abstractionkit').MetaTransaction[], config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">, txOverrides?: EvmErc4337GasOverrides & Nonce): Promise<BuiltUserOperation>;
+    protected _buildUserOperation(calls: import('abstractionkit').MetaTransaction[], config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">, txOverrides?: EvmErc4337GasOverrides & Nonce, approveAmount?: bigint): Promise<BuiltUserOperation>;
     /**
      * Returns an evm transaction to execute the given token transfer, carrying any UserOperationV7
      * gas overrides set on the options.
@@ -625,11 +626,11 @@ export type EvmErc4337WalletPaymasterTokenConfig = {
         address: string;
     };
     /**
-     * - The maximum fee amount for transfer operations.
+     * - The maximum fee amount for transfer operations, in paymaster token base units. When set, it is also the amount a transfer approves to the paymaster.
      */
     transferMaxFee?: number | bigint;
     /**
-     * - The maximum fee amount for sendTransaction and signTransaction operations.
+     * - The maximum fee amount for sendTransaction and signTransaction operations, in paymaster token base units. When set, it is also the amount those operations approve to the paymaster.
      */
     transactionMaxFee?: number | bigint;
 };

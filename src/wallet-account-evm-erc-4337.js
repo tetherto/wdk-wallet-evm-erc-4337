@@ -350,7 +350,10 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     await this._checkPinnedSafe()
 
-    const prepared = await this._prepareForSend(tx, [tx], mergedConfig)
+    const prepared = await this._prepareForSend(tx, [tx], mergedConfig, {
+      maxFee: mergedConfig.transactionMaxFee,
+      maxFeeMessage: 'Exceeded maximum fee cost for transaction operation.'
+    })
 
     const fee = prepared.fee
 
@@ -507,7 +510,10 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     }
 
     const txs = [tx].flat()
-    const prepared = await this._prepareForSend(tx, txs, mergedConfig)
+    const prepared = await this._prepareForSend(tx, txs, mergedConfig, {
+      maxFee: mergedConfig.transactionMaxFee,
+      maxFeeMessage: 'Exceeded maximum fee cost for transaction operation.'
+    })
 
     const { isSponsored, transactionMaxFee } = mergedConfig
     if (!isSponsored && transactionMaxFee !== undefined && prepared.fee > transactionMaxFee) {
@@ -550,7 +556,10 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
     const tx = await WalletAccountReadOnlyEvmErc4337._getTransferTransaction(options)
 
     const txs = [tx]
-    const prepared = await this._prepareForSend(tx, txs, mergedConfig)
+    const prepared = await this._prepareForSend(tx, txs, mergedConfig, {
+      maxFee: transferMaxFee,
+      maxFeeMessage: 'Exceeded maximum fee cost for transfer operation.'
+    })
 
     if (!isSponsored && transferMaxFee !== undefined && prepared.fee > transferMaxFee) {
       throw new MaximumFeeExceededError('Exceeded maximum fee cost for transfer operation.')
@@ -665,10 +674,11 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
   }
 
   /** @private */
-  async _prepareForSend (tx, txs, config) {
+  async _prepareForSend (tx, txs, config, { maxFee, maxFeeMessage }) {
     const nonce = await this._resolveNonce(config)
+    const approveAmount = WalletAccountReadOnlyEvmErc4337._paymasterApproveAmount(config, maxFee)
 
-    if (nonce === undefined) {
+    if (nonce === undefined && approveAmount === undefined) {
       const cached = this._consumeCachedQuote(tx, config)
       if (cached?.userOp) {
         const onChainNonce = await fetchAccountNonce(this._eip1193Provider, cached.smartAccount.entrypointAddress, cached.smartAccount.accountAddress)
@@ -678,11 +688,11 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
       }
     }
 
-    return await this._buildAtNonce(txs, nonce, config)
+    return await this._buildAtNonce(txs, nonce, config, { approveAmount, maxFeeMessage })
   }
 
   /** @private */
-  async _buildAtNonce (txs, nonce, config) {
+  async _buildAtNonce (txs, nonce, config, { approveAmount, maxFeeMessage } = {}) {
     const calls = WalletAccountReadOnlyEvmErc4337._toMetaTransactions(txs)
     const txOverrides = {
       ...WalletAccountReadOnlyEvmErc4337._extractGasOverrides(txs[0]),
@@ -691,8 +701,11 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
 
     let userOp, smartAccount, chainId, tokenQuote
     try {
-      ;({ userOp, smartAccount, chainId, tokenQuote } = await this._buildUserOperation(calls, config, txOverrides))
+      ;({ userOp, smartAccount, chainId, tokenQuote } = await this._buildUserOperation(calls, config, txOverrides, approveAmount))
     } catch (err) {
+      if (WalletAccountReadOnlyEvmErc4337._isApproveBelowCostError(err)) {
+        throw new MaximumFeeExceededError(maxFeeMessage, { cause: err })
+      }
       if (WalletAccountReadOnlyEvmErc4337._isAA50Error(err)) {
         throw new TransactionError('Not enough funds on the safe account to repay the paymaster.', {
           reason: TransactionErrorReason.INSUFFICIENT_BALANCE,

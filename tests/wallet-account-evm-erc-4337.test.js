@@ -830,6 +830,58 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         expect(hash).toBe(DUMMY_USER_OP_HASH)
         expect(fee).toBe(600_000n)
+        expect(createPaymasterUserOperationMock).toHaveBeenCalledWith(
+          SafeAccountMock.mock.results[0].value,
+          { ...DUMMY_USER_OP },
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, {}),
+          { token: USDT_MAINNET_ADDRESS },
+          { entrypoint: actualAk.ENTRYPOINT_V7, approveAmount: 600_000n }
+        )
+      })
+
+      test('should throw if the token cost exceeds the transaction max fee approved to the paymaster', async () => {
+        createPaymasterUserOperationMock.mockRejectedValue(new actualAk.AbstractionKitError(
+          'PAYMASTER_ERROR',
+          'overrides.approveAmount (400000) is below the token cost of the UserOperation (500000). The approval would not cover the fee.',
+          { context: { approveAmount: '400000', tokenCost: '500000' } }
+        ))
+
+        const pmAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", {
+          ...PAYMASTER_TOKEN_CONFIG,
+          transactionMaxFee: 400_000n
+        })
+
+        const promise = pmAccount.sendTransaction(TRANSACTION)
+
+        await expect(promise).rejects.toThrow(MaximumFeeExceededError)
+        await expect(promise).rejects.toThrow('Exceeded maximum fee cost for transaction operation.')
+
+        expect(sendUserOperationMock).not.toHaveBeenCalled()
+      })
+
+      test('should rebuild a quoted operation with the transaction max fee approved to the paymaster', async () => {
+        sendUserOperationMock.mockResolvedValue(DUMMY_USER_OP_HASH)
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_USER_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+
+        const pmAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", {
+          ...PAYMASTER_TOKEN_CONFIG,
+          transactionMaxFee: 600_000n
+        })
+
+        await pmAccount.quoteSendTransaction(TRANSACTION)
+        await pmAccount.sendTransaction(TRANSACTION)
+
+        expect(createPaymasterUserOperationMock).toHaveBeenCalledTimes(2)
+        expect(createPaymasterUserOperationMock).toHaveBeenLastCalledWith(
+          SafeAccountMock.mock.results[0].value,
+          { ...DUMMY_USER_OP },
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, {}),
+          { token: USDT_MAINNET_ADDRESS },
+          { entrypoint: actualAk.ENTRYPOINT_V7, approveAmount: 600_000n }
+        )
       })
 
       test('should send a batch of transactions in a single user operation', async () => {
@@ -1146,6 +1198,13 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
 
         expect(hash).toBe(DUMMY_USER_OP_HASH)
         expect(fee).toBe(600_000n)
+        expect(createPaymasterUserOperationMock).toHaveBeenCalledWith(
+          SafeAccountMock.mock.results[0].value,
+          { ...DUMMY_USER_OP },
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, {}),
+          { token: USDT_MAINNET_ADDRESS },
+          { entrypoint: actualAk.ENTRYPOINT_V7, approveAmount: 600_000n }
+        )
       })
 
       test('should re-validate the merged config when a per-call override is provided', async () => {

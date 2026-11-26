@@ -856,7 +856,36 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         await expect(promise).rejects.toThrow(MaximumFeeExceededError)
         await expect(promise).rejects.toThrow('Exceeded maximum fee cost for transaction operation.')
 
+        expect(createPaymasterUserOperationMock).toHaveBeenCalledWith(
+          SafeAccountMock.mock.results[0].value,
+          { ...DUMMY_USER_OP },
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, {}),
+          { token: USDT_MAINNET_ADDRESS },
+          { entrypoint: actualAk.ENTRYPOINT_V7, approveAmount: 400_000n }
+        )
         expect(sendUserOperationMock).not.toHaveBeenCalled()
+      })
+
+      test('should not approve the transaction max fee when a call is sponsored', async () => {
+        signUserOperationWithSignersMock.mockResolvedValue(DUMMY_OP_SIGNATURE)
+        sendUserOperationMock.mockResolvedValue(DUMMY_USER_OP_HASH)
+
+        const pmAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", {
+          ...PAYMASTER_TOKEN_CONFIG,
+          transactionMaxFee: 600_000n
+        })
+
+        const { hash, fee } = await pmAccount.sendTransaction(TRANSACTION, { isSponsored: true, sponsorshipPolicyId: 'dummy-policy' })
+
+        expect(hash).toBe(DUMMY_USER_OP_HASH)
+        expect(fee).toBe(0n)
+        expect(createPaymasterUserOperationMock).toHaveBeenCalledWith(
+          SafeAccountMock.mock.results[0].value,
+          { ...DUMMY_USER_OP },
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, {}),
+          { sponsorshipPolicyId: 'dummy-policy' },
+          { entrypoint: actualAk.ENTRYPOINT_V7 }
+        )
       })
 
       test('should rebuild a quoted operation with the transaction max fee approved to the paymaster', async () => {
@@ -1100,6 +1129,50 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         await expect(promise).rejects.toThrow('Exceeded maximum fee cost for transaction operation.')
       })
 
+      test('should throw if the token cost exceeds the transaction max fee approved to the paymaster', async () => {
+        createPaymasterUserOperationMock.mockRejectedValue(new actualAk.AbstractionKitError(
+          'PAYMASTER_ERROR',
+          'overrides.approveAmount (400000) is below the token cost of the UserOperation (500000). The approval would not cover the fee.',
+          { context: { approveAmount: '400000', tokenCost: '500000' } }
+        ))
+
+        const pmAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", {
+          ...PAYMASTER_TOKEN_CONFIG,
+          transactionMaxFee: 400_000n
+        })
+
+        const promise = pmAccount.signTransaction(TRANSACTION)
+
+        await expect(promise).rejects.toThrow(MaximumFeeExceededError)
+        await expect(promise).rejects.toThrow('Exceeded maximum fee cost for transaction operation.')
+
+        expect(signUserOperationWithSignersMock).not.toHaveBeenCalled()
+      })
+
+      test('should approve the transaction max fee to the paymaster', async () => {
+        signUserOperationWithSignersMock.mockResolvedValue(DUMMY_OP_SIGNATURE)
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_USER_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+
+        const pmAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", {
+          ...PAYMASTER_TOKEN_CONFIG,
+          transactionMaxFee: 600_000n
+        })
+
+        const userOp = await pmAccount.signTransaction(TRANSACTION)
+
+        expect(userOp).toEqual({ ...DUMMY_USER_OP, signature: DUMMY_OP_SIGNATURE })
+        expect(createPaymasterUserOperationMock).toHaveBeenCalledWith(
+          SafeAccountMock.mock.results[0].value,
+          { ...DUMMY_USER_OP },
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, {}),
+          { token: USDT_MAINNET_ADDRESS },
+          { entrypoint: actualAk.ENTRYPOINT_V7, approveAmount: 600_000n }
+        )
+      })
+
       test('should re-validate the merged config when a per-call override is provided', async () => {
         await expect(account.signTransaction(TRANSACTION, { isSponsored: false }))
           .rejects.toThrow('Missing required paymaster token configuration fields: paymasterAddress, paymasterToken.')
@@ -1180,6 +1253,99 @@ describe('@tetherto/wdk-wallet-evm-erc-4337', () => {
         await expect(promise).rejects.toThrow('Exceeded maximum fee cost for transfer operation.')
 
         expect(sendUserOperationMock).not.toHaveBeenCalled()
+      })
+
+      test('should throw if the token cost exceeds the transfer max fee approved to the paymaster', async () => {
+        createPaymasterUserOperationMock.mockRejectedValue(new actualAk.AbstractionKitError(
+          'PAYMASTER_ERROR',
+          'overrides.approveAmount (400000) is below the token cost of the UserOperation (500000). The approval would not cover the fee.',
+          { context: { approveAmount: '400000', tokenCost: '500000' } }
+        ))
+
+        const pmAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", {
+          ...PAYMASTER_TOKEN_CONFIG,
+          transferMaxFee: 400_000n
+        })
+
+        const promise = pmAccount.transfer(TRANSFER)
+
+        await expect(promise).rejects.toThrow(MaximumFeeExceededError)
+        await expect(promise).rejects.toThrow('Exceeded maximum fee cost for transfer operation.')
+
+        expect(createPaymasterUserOperationMock).toHaveBeenCalledWith(
+          SafeAccountMock.mock.results[0].value,
+          { ...DUMMY_USER_OP },
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, {}),
+          { token: USDT_MAINNET_ADDRESS },
+          { entrypoint: actualAk.ENTRYPOINT_V7, approveAmount: 400_000n }
+        )
+        expect(sendUserOperationMock).not.toHaveBeenCalled()
+      })
+
+      test('should rebuild a quoted transfer with the transfer max fee approved to the paymaster', async () => {
+        sendUserOperationMock.mockResolvedValue(DUMMY_USER_OP_HASH)
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_USER_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+
+        const pmAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", {
+          ...PAYMASTER_TOKEN_CONFIG,
+          transferMaxFee: 600_000n
+        })
+
+        await pmAccount.quoteTransfer(TRANSFER)
+        await pmAccount.transfer(TRANSFER)
+
+        expect(createPaymasterUserOperationMock).toHaveBeenCalledTimes(2)
+        expect(createPaymasterUserOperationMock).toHaveBeenLastCalledWith(
+          SafeAccountMock.mock.results[0].value,
+          { ...DUMMY_USER_OP },
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, {}),
+          { token: USDT_MAINNET_ADDRESS },
+          { entrypoint: actualAk.ENTRYPOINT_V7, approveAmount: 600_000n }
+        )
+      })
+
+      test('should not approve the transaction max fee for a transfer', async () => {
+        sendUserOperationMock.mockResolvedValue(DUMMY_USER_OP_HASH)
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_USER_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+
+        const pmAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", {
+          ...PAYMASTER_TOKEN_CONFIG,
+          transactionMaxFee: 700_000n
+        })
+
+        await pmAccount.transfer(TRANSFER)
+
+        expect(createPaymasterUserOperationMock).toHaveBeenCalledWith(
+          SafeAccountMock.mock.results[0].value,
+          { ...DUMMY_USER_OP },
+          new actualAk.HttpTransport(PAYMASTER_TOKEN_CONFIG.bundlerUrl, {}),
+          { token: USDT_MAINNET_ADDRESS },
+          { entrypoint: actualAk.ENTRYPOINT_V7 }
+        )
+      })
+
+      test('should reuse a quoted native-coins transfer when a transfer max fee is set', async () => {
+        sendUserOperationMock.mockResolvedValue(DUMMY_USER_OP_HASH)
+
+        const nativeAccount = new WalletAccountEvmErc4337(SEED_PHRASE, "0'/0/0", {
+          provider: EIP1193_PROVIDER,
+          bundlerUrl: 'https://dummy-bundler.url/',
+          safeModulesVersion: '0.3.0',
+          useNativeCoins: true,
+          transferMaxFee: 10n ** 18n
+        })
+
+        await nativeAccount.quoteTransfer(TRANSFER)
+        await nativeAccount.transfer(TRANSFER)
+
+        expect(createUserOperationMock).toHaveBeenCalledTimes(1)
+        expect(createPaymasterUserOperationMock).not.toHaveBeenCalled()
       })
 
       test('should allow a fee exactly equal to the transfer max fee configuration', async () => {

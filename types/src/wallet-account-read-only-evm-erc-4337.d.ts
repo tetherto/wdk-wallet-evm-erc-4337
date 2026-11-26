@@ -136,6 +136,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * The result is cached internally for up to 2 minutes. If `sendTransaction` is called with the
      * same transaction within that window, the cached fee is reused without an additional RPC round-trip.
+     * In token-paymaster mode with `transactionMaxFee` set, `sendTransaction` and `signTransaction` build a new
+     * operation instead, so that the paymaster approval is that maximum fee.
      *
      * In a batched call (`tx` passed as `[tx1, tx2, ...]`), only the gas overrides on `tx1` are
      * honored — a UserOperation has a single set of gas fields regardless of how many calls it batches.
@@ -154,6 +156,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * The result is cached internally for up to 2 minutes. If `transfer` is called with the
      * same transaction within that window, the cached fee is reused without an additional RPC round-trip.
+     * In token-paymaster mode with `transferMaxFee` set, `transfer` builds a new operation instead, so that the
+     * paymaster approval is that maximum fee.
      *
      * @param {EvmErc4337TransferOptions} options - The transfer's options, including any UserOperationV7 gas/fee overrides to apply to the underlying transaction.
      * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.

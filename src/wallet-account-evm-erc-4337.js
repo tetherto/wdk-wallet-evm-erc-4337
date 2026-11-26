@@ -419,6 +419,8 @@ export default class WalletAccountEvmErc4337 extends WalletAccountReadOnlyEvmErc
    * same transaction and paymaster configuration reuses the cached operation — skipping the
    * gas-estimation and paymaster round-trips — after a lightweight on-chain nonce check, re-quoting
    * only if the nonce has moved.
+   * In token-paymaster mode with `transactionMaxFee` set, `sendTransaction` and `signTransaction` build a new
+   * operation instead, so that the paymaster approval is that maximum fee.
    *
    * In a batched call (`tx` passed as `[tx1, tx2, ...]`), only the gas overrides on `tx1` are
    * honored — a UserOperation has a single set of gas fields regardless of how many calls it batches.

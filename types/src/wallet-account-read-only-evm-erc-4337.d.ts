@@ -136,6 +136,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * The result is cached internally for up to 2 minutes. If `sendTransaction` is called with the
      * same transaction within that window, the cached fee is reused without an additional RPC round-trip.
+     * In token-paymaster mode with `transactionMaxFee` set, `sendTransaction` and `signTransaction` build a new
+     * operation instead, so that the paymaster approval is that maximum fee.
      *
      * In a batched call (`tx` passed as `[tx1, tx2, ...]`), only the gas overrides on `tx1` are
      * honored — a UserOperation has a single set of gas fields regardless of how many calls it batches.
@@ -154,6 +156,8 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      *
      * The result is cached internally for up to 2 minutes. If `transfer` is called with the
      * same transaction within that window, the cached fee is reused without an additional RPC round-trip.
+     * In token-paymaster mode with `transferMaxFee` set, `transfer` builds a new operation instead, so that the
+     * paymaster approval is that maximum fee.
      *
      * @param {EvmErc4337TransferOptions} options - The transfer's options, including any UserOperationV7 gas/fee overrides to apply to the underlying transaction.
      * @param {Partial<EvmErc4337WalletPaymasterTokenConfig | EvmErc4337WalletSponsorshipPolicyConfig | EvmErc4337WalletNativeCoinsConfig>} [config] - If set, overrides the given configuration options.
@@ -373,10 +377,11 @@ export default class WalletAccountReadOnlyEvmErc4337 extends WalletAccountReadOn
      * @param {MetaTransaction[]} calls - The meta-transactions to include in the UserOperation.
      * @param {Omit<EvmErc4337WalletConfig, 'transferMaxFee'>} config - The wallet configuration.
      * @param {EvmErc4337GasOverrides & Nonce} [txOverrides] - Optional UserOperationV7 gas overrides extracted from the input transaction(s), plus an optional explicit lane `nonce`.
+     * @param {bigint} [approveAmount] - In token mode, the amount the operation approves to the paymaster instead of the paymaster client's default (twice the token cost).
      * @returns {Promise<BuiltUserOperation>} The built operation, signing context, and (in token mode) the paymaster quote.
      * @throws {ConfigurationError} If the account was created from a safe address that is not deployed.
      */
-    protected _buildUserOperation(calls: import('abstractionkit').MetaTransaction[], config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">, txOverrides?: EvmErc4337GasOverrides & Nonce): Promise<BuiltUserOperation>;
+    protected _buildUserOperation(calls: import('abstractionkit').MetaTransaction[], config: Omit<EvmErc4337WalletConfig, "transferMaxFee" | "transactionMaxFee">, txOverrides?: EvmErc4337GasOverrides & Nonce, approveAmount?: bigint): Promise<BuiltUserOperation>;
     /**
      * Returns an evm transaction to execute the given token transfer, carrying any UserOperationV7
      * gas overrides set on the options.
@@ -625,11 +630,11 @@ export type EvmErc4337WalletPaymasterTokenConfig = {
         address: string;
     };
     /**
-     * - The maximum fee amount for transfer operations.
+     * - The maximum fee amount for transfer operations, in paymaster token base units. When set, it is also the amount a transfer approves to the paymaster.
      */
     transferMaxFee?: number | bigint;
     /**
-     * - The maximum fee amount for sendTransaction and signTransaction operations.
+     * - The maximum fee amount for sendTransaction and signTransaction operations, in paymaster token base units. When set, it is also the amount those operations approve to the paymaster.
      */
     transactionMaxFee?: number | bigint;
 };
